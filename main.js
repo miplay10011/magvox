@@ -89,7 +89,7 @@ const SENS = 0.002;
 
 // ========== Мир + менеджер чанков ==========
 let world = null;
-const FULL_RADIUS = 5;
+const FULL_RADIUS = 7;
 const LOD_RINGS = [
   { level: 1, radius: 16 },
   { level: 2, radius: 32 },
