@@ -89,13 +89,13 @@ const SENS = 0.002;
 
 // ========== Мир + менеджер чанков ==========
 let world = null;
-const FULL_RADIUS = 7;
+const FULL_RADIUS = 5;
 const LOD_RINGS = [
-  { level: 1, radius: 8 },
-  { level: 2, radius: 32 },
-  { level: 3, radius: 64 },
+  { level: 1, radius: 5 },
+  { level: 2, radius: 7 },
+  { level: 3, radius: 9 },
 ];
-const FULL_BUDGET = 4, LOD_BUDGET = 6;
+const FULL_BUDGET = 4, LOD_BUDGET = 5;
 const lodMeshes = new Map();
 
 function remeshChunk(chunk) {
