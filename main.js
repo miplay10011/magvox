@@ -456,24 +456,18 @@ net.on('respawn', (m) => {
   stats.hp = 20; renderStats();
   activeEffects.clear();
   
-  // Попытка найти безопасное место до 10 раз
   let attempts = 0;
   let foundSpot = false;
   let spawnX = 0, spawnZ = 0, spawnY = 0;
   
   while (!foundSpot && attempts < 20) {
-    // Случайная позиция в радиусе 100 блоков
     const angle = Math.random() * Math.PI * 2;
     const radius = Math.random() * 100;
     spawnX = Math.cos(angle) * radius;
     spawnZ = Math.sin(angle) * radius;
-    
-    // Проверяем высоту и безопасность
     const terrainY = world.terrainHeight(spawnX, spawnZ);
     const checkX = Math.floor(spawnX);
     const checkZ = Math.floor(spawnZ);
-    
-    // Проверяем 3 блока вверх для места под игрока
     let safe = true;
     for (let y = terrainY; y < terrainY + 2; y++) {
       if (world.getBlock(checkX, y, checkZ) !== 0) {
@@ -481,30 +475,23 @@ net.on('respawn', (m) => {
         break;
       }
     }
-    
-    // Проверяем, что под ногами не пустота
     const groundBlock = world.getBlock(checkX, terrainY - 1, checkZ);
     if (safe && groundBlock !== 0 && terrainY > 0) {
       spawnY = terrainY;
       foundSpot = true;
     }
-    
     attempts++;
   }
   
-  // Если не нашли безопасное место, спавнимся на 0,0
   if (!foundSpot) {
     spawnX = 0;
     spawnZ = 0;
     spawnY = world.terrainHeight(0, 0);
-    console.warn("Could not find safe respawn location, using 0,0");
   }
   
   player.pos.set(spawnX + 0.5, spawnY, spawnZ + 0.5);
   player.vel.set(0, 0, 0);
   player.knock.set(0, 0, 0);
-  
-  console.log(`Respawned at (${spawnX.toFixed(2)}, ${spawnY}, ${spawnZ.toFixed(2)}) after ${attempts} attempts`);
 });
 net.on('disconnect', () => {
   if (!world) startWorld(Math.random() * 10000);
@@ -531,14 +518,14 @@ function addChatMessage(sender, message) {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-// Обработка чата
+// Получение сообщений от сервера (другие игроки)
 net.on('chat', (msg) => {
-  addChatMessage(msg.sender === myId ? 'You' : `Player ${msg.sender}`, msg.message);
+  addChatMessage(`Player ${msg.sender}`, msg.message);
 });
 
+// Отправка сообщений и локальное отображение
 chatInput.addEventListener('focus', () => {
   chatFocused = true;
-  // При фокусе на чате отключаем управление, очищаем нажатые клавиши
   keys.clear();
 });
 chatInput.addEventListener('blur', () => {
@@ -546,7 +533,9 @@ chatInput.addEventListener('blur', () => {
 });
 chatInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter' && chatInput.value.trim()) {
-    net.send('chat', { message: chatInput.value.trim() });
+    const message = chatInput.value.trim();
+    net.send('chat', { message: message });
+    addChatMessage('You', message);   // ← ВАЖНО: локально добавляем своё сообщение
     chatInput.value = '';
   }
 });
@@ -631,7 +620,7 @@ document.addEventListener('mousemove', (e) => {
 
 const keys = new Set();
 document.addEventListener('keydown', (e) => {
-  if (chatFocused) return; // Не обрабатываем игровые клавиши, когда чат в фокусе
+  if (chatFocused) return;
   if (e.code === 'KeyE') { toggleInventory(); return; }
   if (invOpen) return;
   if (e.code === 'KeyQ') {
@@ -961,7 +950,7 @@ function animate(now) {
     updateParticles(dt);
     syncPosition(now);
     renderEffects(now);
-    updateCoordDisplay(); // <-- обновляем координаты в каждом кадре
+    updateCoordDisplay();  // Обновление координат в каждом кадре
   }
   renderer.render(scene, camera);
 }
