@@ -91,7 +91,7 @@ const SENS = 0.002;
 let world = null;
 const FULL_RADIUS = 7;
 const LOD_RINGS = [
-  { level: 1, radius: 16 },
+  { level: 1, radius: 8 },
   { level: 2, radius: 32 },
   { level: 3, radius: 64 },
 ];
