@@ -91,11 +91,11 @@ const SENS = 0.002;
 let world = null;
 const FULL_RADIUS = 5;
 const LOD_RINGS = [
-  { level: 1, radius: 5 },
-  { level: 2, radius: 7 },
-  { level: 3, radius: 9 },
+  { level: 1, radius: 6 },
+  { level: 2, radius: 20 },
+  { level: 3, radius: 40 },
 ];
-const FULL_BUDGET = 4, LOD_BUDGET = 5;
+const FULL_BUDGET = 4, LOD_BUDGET = 7;
 const lodMeshes = new Map();
 
 function remeshChunk(chunk) {
