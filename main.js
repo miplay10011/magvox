@@ -91,11 +91,11 @@ const SENS = 0.002;
 let world = null;
 const FULL_RADIUS = 5;
 const LOD_RINGS = [
-  { level: 1, radius: 6 },
-  { level: 2, radius: 20 },
-  { level: 3, radius: 40 },
+  { level: 1, radius: 16 },
+  { level: 2, radius: 32 },
+  { level: 3, radius: 64 },
 ];
-const FULL_BUDGET = 4, LOD_BUDGET = 7;
+const FULL_BUDGET = 4, LOD_BUDGET = 6;
 const lodMeshes = new Map();
 
 function remeshChunk(chunk) {
@@ -512,6 +512,45 @@ net.on('disconnect', () => {
   setStatus('оффлайн (одиночная игра)');
 });
 
+// ========== Чат и координаты ==========
+const coordDisplay = document.getElementById('coord-display');
+const chatMessages = document.getElementById('chat-messages');
+const chatInput = document.getElementById('chat-input');
+let chatFocused = false;
+
+function updateCoordDisplay() {
+  if (coordDisplay) {
+    coordDisplay.textContent = `X: ${player.pos.x.toFixed(2)} Y: ${player.pos.y.toFixed(2)} Z: ${player.pos.z.toFixed(2)}`;
+  }
+}
+
+function addChatMessage(sender, message) {
+  const msgDiv = document.createElement('div');
+  msgDiv.textContent = `${sender}: ${message}`;
+  chatMessages.appendChild(msgDiv);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// Обработка чата
+net.on('chat', (msg) => {
+  addChatMessage(msg.sender === myId ? 'You' : `Player ${msg.sender}`, msg.message);
+});
+
+chatInput.addEventListener('focus', () => {
+  chatFocused = true;
+  // При фокусе на чате отключаем управление, очищаем нажатые клавиши
+  keys.clear();
+});
+chatInput.addEventListener('blur', () => {
+  chatFocused = false;
+});
+chatInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter' && chatInput.value.trim()) {
+    net.send('chat', { message: chatInput.value.trim() });
+    chatInput.value = '';
+  }
+});
+
 // ========== Оффлайн-магия ==========
 let localMagic = null;
 function makeLocalCtx() {
@@ -592,6 +631,7 @@ document.addEventListener('mousemove', (e) => {
 
 const keys = new Set();
 document.addEventListener('keydown', (e) => {
+  if (chatFocused) return; // Не обрабатываем игровые клавиши, когда чат в фокусе
   if (e.code === 'KeyE') { toggleInventory(); return; }
   if (invOpen) return;
   if (e.code === 'KeyQ') {
@@ -896,7 +936,7 @@ function animate(now) {
     const ready = world.getChunk(
       Math.floor(player.pos.x / CHUNK_SIZE),
       Math.floor(player.pos.z / CHUNK_SIZE));
-    if (ready) updatePlayer(dt);
+    if (ready && !chatFocused) updatePlayer(dt);
     updateRemotePlayers(dt);
 
     for (const pr of projectiles.values()) {
@@ -921,6 +961,7 @@ function animate(now) {
     updateParticles(dt);
     syncPosition(now);
     renderEffects(now);
+    updateCoordDisplay(); // <-- обновляем координаты в каждом кадре
   }
   renderer.render(scene, camera);
 }
