@@ -1,0 +1,7 @@
+[build]
+buildCommand = "npm install"
+startCommand = "npm start"
+
+[build.nixpacks]
+plan = "nodejs"
+nodeVersion = "20"
