@@ -89,11 +89,11 @@ const SENS = 0.002;
 
 // ========== Мир + менеджер чанков ==========
 let world = null;
-const FULL_RADIUS = 4;
+const FULL_RADIUS = 5;
 const LOD_RINGS = [
-  { level: 1, radius: 12 },
-  { level: 2, radius: 28 },
-  { level: 3, radius: 60 },
+  { level: 1, radius: 16 },
+  { level: 2, radius: 32 },
+  { level: 3, radius: 64 },
 ];
 const FULL_BUDGET = 4, LOD_BUDGET = 6;
 const lodMeshes = new Map();
@@ -455,9 +455,56 @@ net.on('respawn', (m) => {
   if (m.id !== myId) return;
   stats.hp = 20; renderStats();
   activeEffects.clear();
-  player.pos.set(0.5, world.terrainHeight(0, 0) + 1, 0.5);
+  
+  // Попытка найти безопасное место до 10 раз
+  let attempts = 0;
+  let foundSpot = false;
+  let spawnX = 0, spawnZ = 0, spawnY = 0;
+  
+  while (!foundSpot && attempts < 20) {
+    // Случайная позиция в радиусе 100 блоков
+    const angle = Math.random() * Math.PI * 2;
+    const radius = Math.random() * 100;
+    spawnX = Math.cos(angle) * radius;
+    spawnZ = Math.sin(angle) * radius;
+    
+    // Проверяем высоту и безопасность
+    const terrainY = world.terrainHeight(spawnX, spawnZ);
+    const checkX = Math.floor(spawnX);
+    const checkZ = Math.floor(spawnZ);
+    
+    // Проверяем 3 блока вверх для места под игрока
+    let safe = true;
+    for (let y = terrainY; y < terrainY + 2; y++) {
+      if (world.getBlock(checkX, y, checkZ) !== 0) {
+        safe = false;
+        break;
+      }
+    }
+    
+    // Проверяем, что под ногами не пустота
+    const groundBlock = world.getBlock(checkX, terrainY - 1, checkZ);
+    if (safe && groundBlock !== 0 && terrainY > 0) {
+      spawnY = terrainY;
+      foundSpot = true;
+    }
+    
+    attempts++;
+  }
+  
+  // Если не нашли безопасное место, спавнимся на 0,0
+  if (!foundSpot) {
+    spawnX = 0;
+    spawnZ = 0;
+    spawnY = world.terrainHeight(0, 0);
+    console.warn("Could not find safe respawn location, using 0,0");
+  }
+  
+  player.pos.set(spawnX + 0.5, spawnY, spawnZ + 0.5);
   player.vel.set(0, 0, 0);
   player.knock.set(0, 0, 0);
+  
+  console.log(`Respawned at (${spawnX.toFixed(2)}, ${spawnY}, ${spawnZ.toFixed(2)}) after ${attempts} attempts`);
 });
 net.on('disconnect', () => {
   if (!world) startWorld(Math.random() * 10000);
