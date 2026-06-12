@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>Voxel Game</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    #hud {
+      position: absolute; top: 10px; left: 10px;
+      color: white; font-family: monospace; font-size: 13px;
+      background: rgba(0,0,0,0.5); padding: 8px;
+      user-select: none; pointer-events: none;
+    }
+    #status {
+      position: absolute; top: 10px; right: 10px;
+      color: white; font-family: monospace; font-size: 14px;
+      background: rgba(0,0,0,0.5); padding: 8px; pointer-events: none;
+    }
+    #crosshair {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      color: white; font-size: 22px; font-family: monospace;
+      text-shadow: 0 0 3px black; pointer-events: none;
+    }
+    #hotbar {
+      position: absolute; bottom: 12px; left: 50%;
+      transform: translateX(-50%);
+      display: flex; gap: 4px; pointer-events: none;
+    }
+    .slot {
+      width: 48px; height: 48px; position: relative;
+      background: rgba(0,0,0,0.45); border: 2px solid #777;
+    }
+    .slot.selected { border-color: #fff; }
+    .slot .swatch { position: absolute; inset: 9px; border-radius: 2px; }
+    .slot .count {
+      position: absolute; bottom: 1px; right: 4px;
+      color: white; font: bold 14px monospace; text-shadow: 1px 1px 0 black;
+    }
+    #inventory {
+      position: absolute; inset: 0; background: rgba(0,0,0,0.5);
+      display: none; align-items: center; justify-content: center;
+    }
+    #inventory.open { display: flex; }
+    #inv-panel { background: #c6c6c6; padding: 14px; border: 3px solid #555; border-radius: 4px; }
+    #inv-panel .inv-grid { display: grid; grid-template-columns: repeat(9, 48px); gap: 4px; }
+    #inv-panel .slot { pointer-events: auto; cursor: pointer; background: #8b8b8b; }
+    #inv-panel .slot:hover { background: #a8a8a8; }
+    #inv-hotbar-row { margin-top: 16px; }
+    #held-item {
+      position: fixed; width: 36px; height: 36px;
+      pointer-events: none; display: none; z-index: 10; border-radius: 2px;
+    }
+    #held-item .count {
+      position: absolute; bottom: -2px; right: 2px;
+      color: white; font: bold 14px monospace; text-shadow: 1px 1px 0 black;
+    }
+    #stats {
+      position: absolute; bottom: 68px; left: 50%;
+      transform: translateX(-50%); width: 464px; pointer-events: none;
+    }
+    #hearts { font: 18px monospace; text-shadow: 1px 1px 0 black; letter-spacing: 2px; }
+    #mana-bar {
+      margin-top: 3px; height: 8px; background: rgba(0,0,0,0.5);
+      border: 1px solid #224; border-radius: 3px;
+    }
+    #mana-fill { height: 100%; background: #38f; border-radius: 2px; transition: width 0.2s; }
+    #damage-flash {
+      position: absolute; inset: 0; background: rgba(255,0,0,0.35);
+      opacity: 0; pointer-events: none; transition: opacity 0.4s;
+    }
+    #magic-ring {
+      position: absolute; top: 50%; left: 50%; width: 0; height: 0;
+      display: none; pointer-events: none;
+    }
+    #magic-ring.combat { display: block; }
+    .element-icon {
+      position: absolute; width: 34px; height: 34px; margin: -17px;
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-size: 17px; opacity: 0.25; border: 2px solid rgba(255,255,255,0.4);
+      transition: opacity 0.15s, transform 0.15s; text-shadow: 0 0 3px black;
+    }
+    .element-icon .num {
+      position: absolute; bottom: -15px; font: 10px monospace; color: #fff;
+    }
+    .element-icon.flash { opacity: 1; transform: scale(1.25); }
+    #spell-queue {
+      position: absolute; top: calc(50% + 95px); left: 50%; transform: translateX(-50%);
+      display: flex; gap: 6px; pointer-events: none;
+    }
+    .queued {
+      width: 26px; height: 26px; border-radius: 50%; font-size: 14px;
+      display: flex; align-items: center; justify-content: center; border: 2px solid #fff;
+    }
+    #effects-hud {
+      position: absolute; left: 10px; top: 45%; color: #fff;
+      font: 13px monospace; text-shadow: 1px 1px 0 #000; pointer-events: none;
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="hud">Клик — мышь · WASD · Space · F полёт · E инвентарь · Q бой/стройка ·
+    бой: 1–9 элементы, ЛКМ каст, ПКМ убрать, X сброс</div>
+  <div id="status">подключение…</div>
+  <div id="crosshair">+</div>
+  <div id="magic-ring"></div>
+  <div id="spell-queue"></div>
+  <div id="effects-hud"></div>
+  <div id="stats">
+    <div id="hearts"></div>
+    <div id="mana-bar"><div id="mana-fill"></div></div>
+  </div>
+  <div id="hotbar"></div>
+  <div id="inventory">
+    <div id="inv-panel">
+      <div class="inv-grid" id="inv-main"></div>
+      <div class="inv-grid" id="inv-hotbar-row"></div>
+    </div>
+  </div>
+  <div id="held-item"><div class="count"></div></div>
+  <div id="damage-flash"></div>
+  <script type="module" src="main.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+cd voxel-game/server
+npm install        # один раз
+node server.js
+
+книгпа
+cd voxel-game
+node spellbook.mjs   # → spellbook.md со всеми ~1415 комбо
