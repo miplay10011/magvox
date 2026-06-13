@@ -1151,6 +1151,7 @@ document.addEventListener('keydown', (e) => {
   // ========== КНИГА: H ==========
   if (e.code === 'KeyH') {
     e.preventDefault();
+    if (chatFocused) return;
     if (spellBookOpen) closeSpellBook();
     else openSpellBook();
     return;

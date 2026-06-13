@@ -1,4 +1,4 @@
-// magic.js – полная версия со всеми комбинациями, без конфликтов, с поддержкой визуалов
+// magic.js – исправленная версия (луч работает)
 export const SPELL_ELEMENTS = ['fire','water','air','earth','beam','ice','shield','light','dark'];
 export const CONFLICTS = [['fire','water'],['fire','ice'],['light','dark']];
 export const MANA_PER_ELEMENT = 1, CAST_COOLDOWN = 500;
@@ -7,7 +7,6 @@ export function createMagicEngine(ctx) {
   const projectiles = new Map(), mines = new Map(), lastCast = new Map();
   let nextProj = 1, nextMine = 1;
 
-  // ========== Вспомогательные функции ==========
   const dominant = (els, n) => {
     let best = 'beam', bc = 0;
     for (const e of els) {
@@ -20,14 +19,11 @@ export function createMagicEngine(ctx) {
   function validate(els) {
     if (!Array.isArray(els) || els.length < 1 || els.length > 5) return false;
     if (!els.every(e => SPELL_ELEMENTS.includes(e))) return false;
-    // Специально разрешаем конфликт light+dark только для комбинации ослепления (light+water+air) – теперь конфликта нет, можно убрать исключение.
-    for (const [a, b] of CONFLICTS) {
+    for (const [a, b] of CONFLICTS)
       if (els.includes(a) && els.includes(b)) return false;
-    }
     return true;
   }
 
-  // ========== Взрыв ==========
   function explode(x, y, z, radius, dmg, ownerId, extraEffect = null) {
     radius = Math.min(radius, 6);
     ctx.emit('explosion', { x, y, z, r: radius });
@@ -55,14 +51,12 @@ export function createMagicEngine(ctx) {
     if (extraEffect) extraEffect(x, y, z);
   }
 
-  // ========== Эффекты при попадании ==========
   function applyElementEffects(targetId, n, attackerId) {
     if (n('fire')) ctx.addEffect(targetId, 'burning', 3, n('fire'));
     if (n('ice'))  ctx.addEffect(targetId, n('ice') >= 3 ? 'freeze' : 'slow', n('ice') >= 3 ? 1.5 : 4, n('ice'));
     if (n('dark')) ctx.addEffect(targetId, 'curse', 6 + 2 * n('dark'), n('dark'));
   }
 
-  // ========== Создание снаряда ==========
   function spawnProjectile(owner, kind, x, y, z, vx, vy, vz, opts = {}) {
     const id = nextProj++;
     const proj = {
@@ -86,14 +80,12 @@ export function createMagicEngine(ctx) {
     });
   }
 
-  // ========== Мина ==========
   function placeMine(owner, x, y, z, n, len) {
     const id = nextMine++;
     mines.set(id, { id, owner, x, y, z, ttl: 60, dmg: 8 + 2 * n('dark'), radius: 2 + 0.4 * len });
     ctx.emit('mineSpawn', { id, x, y, z });
   }
 
-  // ========== Каменная стена ==========
   function stoneWall(x, z, yaw, len) {
     const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
     const rx = Math.cos(yaw), rz = -Math.sin(yaw);
@@ -105,7 +97,6 @@ export function createMagicEngine(ctx) {
     }
   }
 
-  // ========== Нова (толчок) ==========
   function pushNova(casterId, x, y, z, len) {
     ctx.emit('nova', { x, y, z });
     for (const [id, p] of ctx.getPlayers()) {
@@ -115,7 +106,6 @@ export function createMagicEngine(ctx) {
     }
   }
 
-  // ========== Луч ==========
   function castBeam(casterId, els, n, len, ox, oy, oz, dx, dy, dz) {
     const MAXD = 40;
     let endT = MAXD, hitId = null;
@@ -148,7 +138,6 @@ export function createMagicEngine(ctx) {
       { ax: ox, az: oz, kb: 4, attackerId: casterId, weapon: 'магии' });
   }
 
-  // ========== Основная функция каста ==========
   function cast(casterId, els, dirArr, origin, yaw) {
     if (!validate(els)) return;
     const now = Date.now();
@@ -165,7 +154,7 @@ export function createMagicEngine(ctx) {
     dx /= dl; dy /= dl; dz /= dl;
     const ox = origin.x, oy = origin.y, oz = origin.z;
 
-    // ========== 1. БАФФЫ (требуют shield ИЛИ light) ==========
+    // ========== 1. БАФФЫ (shield/light) ==========
     if (n('air') === 2 && n('earth') === 1 && len === 3) {
       ctx.addEffect(casterId, 'jump_boost', 75, 1.5);
       return;
@@ -216,8 +205,7 @@ export function createMagicEngine(ctx) {
       return;
     }
 
-    // ========== 2. АТАКИ / ДЕБАФФЫ (требуют dark) ==========
-    // Ослепление – новая комбинация без конфликта: light + water + air
+    // ========== 2. АТАКИ / ДЕБАФФЫ (dark) ==========
     if (n('light') === 1 && n('water') === 1 && n('air') === 1 && len === 3) {
       for (const [id, p] of ctx.getPlayers()) {
         if (id === casterId) continue;
@@ -266,7 +254,7 @@ export function createMagicEngine(ctx) {
       return;
     }
 
-    // ========== 3. МОЩНЫЕ 5-ЭЛЕМЕНТНЫЕ ЗАКЛИНАНИЯ ==========
+    // ========== 3. МОЩНЫЕ 5-ЭЛЕМЕНТНЫЕ ==========
     if (len === 5) {
       if (n('shield') === 1 && n('earth') === 1 && n('air') === 1 && n('water') === 1 && n('light') === 1) {
         ctx.createProtectionSphere(casterId, ox, oy - 1, oz, 8);
@@ -317,14 +305,13 @@ export function createMagicEngine(ctx) {
         if (nearest) ctx.shadowShackles(casterId, nearest);
         return;
       }
-      // Дыхание дракона – исправленная комбинация без конфликта fire+water
       if (n('fire') === 1 && n('dark') === 1 && n('air') === 1 && n('earth') === 1 && n('ice') === 1) {
         ctx.dragonBreath(casterId, { x: ox, z: oz }, { x: dx, z: dz }, yaw);
         return;
       }
     }
 
-    // ========== 4. СНАРЯДЫ / ТОТЕМЫ / МЕТЕОР ==========
+    // ========== 4. ТОТЕМ / МЕТЕОР ==========
     if (n('earth') === 1 && n('beam') === 1 && n('air') === 1 && (len === 3 || len === 4)) {
       const radius = len === 4 ? 7 : 5;
       const duration = len === 4 ? 45 : 30;
@@ -347,14 +334,18 @@ export function createMagicEngine(ctx) {
       return;
     }
 
-    // ========== 5. ОБЫЧНЫЙ СНАРЯД (по умолчанию) ==========
+    // ========== 5. ЛУЧ (beam) – добавлено! ==========
+    if (n('beam')) {
+      return castBeam(casterId, els, n, len, ox, oy, oz, dx, dy, dz);
+    }
+
+    // ========== 6. ОБЫЧНЫЙ СНАРЯД (по умолчанию) ==========
     const explosive = n('fire') > 0 && n('earth') > 0;
     const sp = 18 * (1 + 0.25 * n('air'));
     const vx = dx * sp, vy = dy * sp, vz = dz * sp;
     let radius = 0;
     if (explosive) radius = 1.5 + 0.6 * (n('fire') + n('earth'));
     let dmg = 3 * n('fire') + 4 * n('earth') + 2 * n('ice') + 2 * n('dark') + n('water') + n('air') + 2 * n('light');
-    // Если в снаряде нет dark – урон уменьшаем вдвое (бафф-ориентированные заклинания)
     if (n('dark') === 0 && dmg > 0) dmg = Math.max(1, Math.floor(dmg / 2));
     spawnProjectile(casterId, dominant(els, n), ox + dx, oy + dy, oz + dz, vx, vy, vz, {
       gravity: n('earth') > 0,
@@ -365,7 +356,6 @@ export function createMagicEngine(ctx) {
     });
   }
 
-  // ========== Обновление снарядов и мин (tick) ==========
   function tick(dt) {
     for (const [id, pr] of projectiles) {
       pr.ttl -= dt;
