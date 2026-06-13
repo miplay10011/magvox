@@ -290,19 +290,21 @@ export function buildLODMesh(world, gx, gz, level) {
   const step = 1 << level;
   const n = CHUNK_SIZE;
   const size = n * step;
-  // Смещение на 1 шаг влево/вверх для перекрытия границ
-  const ox = gx * size - step;
-  const oz = gz * size - step;
-  const W = n + 3; // +2 для перекрытия, +1 для индексации (итого +3)
+  // Перекрытие на 2 шага, чтобы гарантированно закрыть стыки
+  const overlap = 4;
+  const ox = gx * size - overlap * step;
+  const oz = gz * size - overlap * step;
+  const W = n + overlap*2 + 2; // +1 для индексации
   const H = new Int16Array(W * W);
-  for (let j = -1; j <= n; j++) {
-    for (let i = -1; i <= n; i++) {
-      const wx = ox + (i + 1) * step;
-      const wz = oz + (j + 1) * step;
-      H[(i + 1) + (j + 1) * W] = world.terrainHeight(wx, wz);
+  // Заполняем высоты с запасом
+  for (let j = -overlap; j <= n + overlap; j++) {
+    for (let i = -overlap; i <= n + overlap; i++) {
+      const wx = ox + (i + overlap) * step;
+      const wz = oz + (j + overlap) * step;
+      H[(i + overlap) + (j + overlap) * W] = world.terrainHeight(wx, wz);
     }
   }
-  const h = (i, j) => H[(i + 1) + (j + 1) * W];
+  const h = (i, j) => H[(i + overlap) + (j + overlap) * W];
 
   const positions = [], normals = [], colors = [], indices = [];
   const Y_OFF = -0.05;
@@ -322,8 +324,8 @@ export function buildLODMesh(world, gx, gz, level) {
   for (let j = 0; j < n; j++) {
     for (let i = 0; i < n; i++) {
       const y = h(i, j);
-      const x0 = ox + (i + 1) * step;
-      const z0 = oz + (j + 1) * step;
+      const x0 = ox + (i + overlap) * step;
+      const z0 = oz + (j + overlap) * step;
       const x1 = x0 + step;
       const z1 = z0 + step;
 
