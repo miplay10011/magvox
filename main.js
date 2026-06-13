@@ -4,7 +4,7 @@ import { World, buildChunkMesh, buildLODMesh, AIR, BLOCK_COLORS, CHUNK_SIZE,
 import { Network } from './network.js';
 import { createMagicEngine } from './magic.js';
 import { initParticles, spawnParticles, updateParticles } from './particles.js';
-import { initInventory, toggleInventory, addItem, refreshUI, selectedSlot, inventory, held, invOpen, clickSlot } from './inventory.js';
+import { initInventory, toggleInventory, addItem, refreshUI, selectedSlot, inventory, held, invOpen, clickSlot, setGlobals } from './inventory.js';
 
 // ========== Рендер ==========
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -87,7 +87,6 @@ function createSettingsMenu() {
     settingsMenu.append(title, sensLabel, closeBtn);
     document.body.appendChild(settingsMenu);
 }
-initInventory()
 function toggleSettings(open) {
     settingsOpen = open;
     if (!settingsMenu) return;
@@ -870,7 +869,7 @@ function addChatMessage(sender, message) {
   chatMessages.appendChild(msgDiv);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
-
+setGlobals(player, renderer, keys, () => settingsOpen, addChatMessage);
 function suicide() {
   stats.hp = 0;
   renderStats();
@@ -951,6 +950,8 @@ chatInput.addEventListener('keydown', (e) => {
 });
 
 createSettingsMenu();
+setGlobals(player, renderer, keys, () => settingsOpen, addChatMessage);
+initInventory();
 
 // ========== Оффлайн-магия ==========
 let localMagic = null;

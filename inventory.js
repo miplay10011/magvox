@@ -1,9 +1,21 @@
+// inventory.js
 import { BLOCK_COLORS, GRASS, DIRT, STONE, WOOD, LEAVES, PLANKS, SAND, GRAVEL, COAL_ORE, IRON_ORE } from './world.js';
-import { addChatMessage } from './ui.js';
 import { spawnParticles } from './particles.js';
-import { player, keys } from './player.js';
-import { renderer } from './render.js';
-import { settingsOpen } from './ui.js';
+
+// Эти переменные будут установлены из main.js через setGlobals
+let globalPlayer = null;
+let globalRenderer = null;
+let globalKeys = null;
+let globalSettingsOpen = null;
+let globalAddChatMessage = null;
+
+export function setGlobals(player, renderer, keys, settingsOpen, addChatMessage) {
+  globalPlayer = player;
+  globalRenderer = renderer;
+  globalKeys = keys;
+  globalSettingsOpen = settingsOpen;
+  globalAddChatMessage = addChatMessage;
+}
 
 export const INV_SIZE = 37;
 export let inventory = new Array(INV_SIZE).fill(null);
@@ -104,16 +116,17 @@ export function addItem(type) {
 export function recycleItem() {
   const slot = inventory[36];
   if (!slot) {
-    addChatMessage('Система', 'Положите блок в синий слот, чтобы переработать');
+    if (globalAddChatMessage) globalAddChatMessage('Система', 'Положите блок в синий слот, чтобы переработать');
     return;
   }
   const newType = ALL_BLOCK_TYPES[Math.floor(Math.random() * ALL_BLOCK_TYPES.length)];
   slot.type = newType;
   slot.count = 1;
   refreshUI();
-  const pos = player.pos;
-  spawnParticles(pos.x, pos.y + 1, pos.z, BLOCK_COLORS[newType].getHex(), 30, 2.5, 1.2);
-  addChatMessage('Система', `Предмет превращён в ${Object.keys(BLOCK_COLORS)[newType] || 'блок'}!`);
+  if (globalPlayer) {
+    spawnParticles(globalPlayer.pos.x, globalPlayer.pos.y + 1, globalPlayer.pos.z, BLOCK_COLORS[newType].getHex(), 30, 2.5, 1.2);
+  }
+  if (globalAddChatMessage) globalAddChatMessage('Система', `Предмет превращён в ${Object.keys(BLOCK_COLORS)[newType] || 'блок'}!`);
 }
 
 export function toggleInventory() {
@@ -122,13 +135,13 @@ export function toggleInventory() {
   if (invEl) invEl.classList.toggle('open', invOpen);
   if (invOpen) {
     document.exitPointerLock();
-    keys.clear();
+    if (globalKeys) globalKeys.clear();
   } else {
     if (held) {
       for (let n = held.count; n > 0; n--) addItem(held.type);
       held = null;
     }
-    if (!settingsOpen) renderer.domElement.requestPointerLock();
+    if (!globalSettingsOpen && globalRenderer) globalRenderer.domElement.requestPointerLock();
   }
   refreshUI();
 }
