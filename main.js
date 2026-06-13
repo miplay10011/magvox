@@ -261,44 +261,50 @@ function startWorld(seed, edits = []) {
   chunkManagerTick();
 }
 
-function isChunkInView(cx, cz, playerPos, yaw, fovDegrees = 100) {
+// forward - вектор направления взгляда (уже есть в updatePlayer, но можно получить из камеры)
+function isChunkInView(cx, cz, playerPos, forward, fovDegrees = 140) {
     // Центр чанка в мировых координатах
     const chunkCenterX = (cx + 0.5) * CHUNK_SIZE;
     const chunkCenterZ = (cz + 0.5) * CHUNK_SIZE;
     const dx = chunkCenterX - playerPos.x;
     const dz = chunkCenterZ - playerPos.z;
     const distSq = dx*dx + dz*dz;
-    // Если чанк очень близко – загружаем всегда (чтобы не было дыр под ногами)
-    if (distSq < (CHUNK_SIZE * 2) ** 2) return true;
 
-    // Направление от игрока к центру чанка
-    const angleToChunk = Math.atan2(dz, dx);
-    // Направление взгляда: yaw – это угол поворота по горизонтали (в радианах, 0 – взгляд на +Z)
-    const viewAngle = yaw;
-    let diff = Math.abs(angleToChunk - viewAngle);
-    diff = Math.min(Math.abs(diff), Math.PI * 2 - Math.abs(diff));
+    // Всегда загружаем чанки в радиусе 2 чанков (чтобы не было дыр под ногами и при быстром повороте)
+    if (distSq < (CHUNK_SIZE * 2.5) ** 2) return true;
+
+    // Нормализованное направление на чанк
+    const len = Math.hypot(dx, dz);
+    const dirX = dx / len;
+    const dirZ = dz / len;
+
+    // Скалярное произведение с направлением взгляда (forward)
+    // forward уже нормализован в коде (wish нормализуется, но forward от камеры всегда единичный)
+    const dot = dirX * forward.x + dirZ * forward.z;
+
+    // cos(половины FOV). Для FOV = 140° -> половина 70° -> cos ≈ 0.342
     const halfFovRad = (fovDegrees * Math.PI) / 180 / 2;
-    return diff < halfFovRad;
+    const threshold = Math.cos(halfFovRad);
+
+    // Чанк считается видимым, если находится в конусе (dot > threshold)
+    return dot > threshold;
 }
 
 function chunkManagerTick() {
     if (!world) return;
     const pcx = Math.floor(player.pos.x / CHUNK_SIZE);
     const pcz = Math.floor(player.pos.z / CHUNK_SIZE);
+    
+    // Вектор направления взгляда (горизонтальная составляющая)
+    const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)).normalize();
 
-    // Получаем направление взгляда (yaw)
-    const viewYaw = yaw;
-
-    // Собираем список чанков, которые должны быть загружены (в радиусе FULL_RADIUS + проверка видимости)
     const wantFull = new Set();
     const missing = [];
-
     for (let dx = -FULL_RADIUS; dx <= FULL_RADIUS; dx++) {
         for (let dz = -FULL_RADIUS; dz <= FULL_RADIUS; dz++) {
             const cx = pcx + dx, cz = pcz + dz;
-            // Проверяем, виден ли чанк (с запасом)
-            if (!isChunkInView(cx, cz, player.pos, viewYaw, 110)) {
-                // Если чанк сзади и не очень близко – пропускаем (не загружаем)
+            // Проверяем видимость с углом 140°
+            if (!isChunkInView(cx, cz, player.pos, forward, 140)) {
                 const distSq = dx*dx + dz*dz;
                 if (distSq > 9) continue; // не загружаем чанки дальше 3 блоков сзади
             }
