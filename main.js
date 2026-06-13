@@ -153,6 +153,7 @@ const player = {
   knock: new THREE.Vector3(),
   onGround: false,
   flying: false,
+  doubleJumpUsed: false,
 };
 let yaw = 0, pitch = 0;
 
@@ -269,6 +270,9 @@ const EFFECT_NAMES = {
   burning: '🔥 Горение', slow: '🐌 Замедление', freeze: '❄ Заморозка',
   curse: '🌑 Проклятие', ward: '🛡 Барьер', stoneskin: '🪨 Кам. кожа',
   speed: '💨 Ускорение', levitate: '🕊 Левитация',
+  jump_boost: '🚀 Прыгучесть', regen: '💚 Регенерация', fire_resist: '🔥 Огнеупорность',
+  fire_aura: '🔥 Огненная аура', ice_skin: '❄ Ледяная кожа', chain_lightning: '⚡ Разряд',
+  blind: '🌫️ Ослепление', shadow_step: '🌑 Теневой шаг', weightless: '🍃 Невесомость',
 };
 function effectActive(name) {
   const e = activeEffects.get(name);
@@ -376,6 +380,17 @@ function updateTransients(dt) {
   }
 }
 
+// ========== Слепота (оверлей) ==========
+let blindnessOverlay = null;
+function setBlindness(active) {
+  if (!blindnessOverlay) {
+    blindnessOverlay = document.createElement('div');
+    blindnessOverlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,200,0.7); pointer-events:none; z-index:1000; display:none;';
+    document.body.appendChild(blindnessOverlay);
+  }
+  blindnessOverlay.style.display = active ? 'block' : 'none';
+}
+
 // ========== Сеть ==========
 const SERVER_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
 let myId = null;
@@ -387,56 +402,46 @@ function createPlayerModel(color) {
   const group = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.1 });
   
-  // Ноги (длина 0.6, ширина 0.3, глубина 0.3)
   const legGeo = new THREE.BoxGeometry(0.3, 0.6, 0.3);
   const leftLeg = new THREE.Mesh(legGeo, mat);
   leftLeg.name = 'leftLeg';
   leftLeg.position.set(-0.2, 0.3, 0);
   group.add(leftLeg);
-  
   const rightLeg = new THREE.Mesh(legGeo, mat);
   rightLeg.name = 'rightLeg';
   rightLeg.position.set(0.2, 0.3, 0);
   group.add(rightLeg);
   
-  // Торс (высота 0.8, ширина 0.6, глубина 0.3)
   const torsoGeo = new THREE.BoxGeometry(0.6, 0.8, 0.3);
   const torso = new THREE.Mesh(torsoGeo, mat);
   torso.position.set(0, 1, 0);
   group.add(torso);
   
-  // Руки (длина 0.6, ширина 0.3, глубина 0.3)
   const armGeo = new THREE.BoxGeometry(0.3, 0.6, 0.3);
   const leftArm = new THREE.Mesh(armGeo, mat);
   leftArm.name = 'leftArm';
   leftArm.position.set(-0.45, 1.1, 0);
   group.add(leftArm);
-  
   const rightArm = new THREE.Mesh(armGeo, mat);
   rightArm.name = 'rightArm';
   rightArm.position.set(0.45, 1.1, 0);
   group.add(rightArm);
   
-  // Голова (куб 0.5x0.5x0.5)
   const headGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
   const head = new THREE.Mesh(headGeo, mat);
   head.position.set(0, 1.6, 0);
   group.add(head);
   
-  // Невидимый хитбокс (размеры PLAYER)
   const hitboxGeo = new THREE.BoxGeometry(PLAYER.width, PLAYER.height, PLAYER.width);
   const hitboxMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, visible: true });
   const hitbox = new THREE.Mesh(hitboxGeo, hitboxMat);
   hitbox.position.set(0, PLAYER.height / 2, 0);
   group.add(hitbox);
   
-  // Сохраняем ссылки для анимации
   group.userData = { leftArm, rightArm, leftLeg, rightLeg };
-  
   return group;
 }
 
-// Функция временной красной вспышки (без изменений)
 function flashPlayerModel(group, duration = 200) {
   if (!group) return;
   group.children.forEach(child => {
@@ -500,29 +505,23 @@ function updateRemotePlayers(dt) {
   const tmp = new THREE.Vector3();
   
   for (const rp of remotePlayers.values()) {
-    // Плавное движение позиции
     tmp.set(rp.target.x, rp.target.y, rp.target.z);
     rp.group.position.lerp(tmp, k);
     rp.group.rotation.y += (rp.yaw - rp.group.rotation.y) * k;
     
-    // Анимация рук и ног
-    // Вычисляем скорость (расстояние от последней позиции)
     const dx = rp.group.position.x - rp.lastPos.x;
     const dz = rp.group.position.z - rp.lastPos.z;
     const speed = Math.hypot(dx, dz);
-    const animSpeed = 12.0; // частота качания
-    const armAmp = 0.8;     // амплитуда рук
-    const legAmp = 0.5;     // амплитуда ног
+    const animSpeed = 12.0;
+    const armAmp = 0.8;
+    const legAmp = 0.5;
     
     if (speed > 0.01) {
-      // При движении увеличиваем фазу
       rp.phase += speed * animSpeed;
     } else {
-      // При остановке фаза стремится к 0
       rp.phase *= 0.95;
     }
     
-    // Получаем части тела
     const leftArm = rp.group.userData.leftArm;
     const rightArm = rp.group.userData.rightArm;
     const leftLeg = rp.group.userData.leftLeg;
@@ -532,13 +531,11 @@ function updateRemotePlayers(dt) {
       const angle = Math.sin(rp.phase) * armAmp;
       leftArm.rotation.x = angle;
       rightArm.rotation.x = -angle;
-      
       const legAngle = Math.sin(rp.phase) * legAmp;
       leftLeg.rotation.x = -legAngle;
       rightLeg.rotation.x = legAngle;
     }
     
-    // Запоминаем позицию для следующего кадра
     rp.lastPos.copy(rp.group.position);
   }
 }
@@ -609,6 +606,23 @@ const EVENTS = {
     spawnParticles(m.x0, m.y0, m.z0, 0x9050c0, 20, 3, 0.7);
     spawnParticles(m.x1, m.y1, m.z1, 0x9050c0, 20, 3, 0.7);
   },
+  zoneSpawn: (m) => {
+    // Визуальный круг (опционально)
+    const ringGeo = new THREE.RingGeometry(m.radius-0.2, m.radius+0.2, 32);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0x88aaff, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = -Math.PI/2;
+    ring.position.set(m.x, 0.1, m.z);
+    scene.add(ring);
+    setTimeout(() => scene.remove(ring), 8000);
+  },
+  zoneEnd: (m) => {},
+  chainLink: (m) => {
+    // Визуальная цепь между игроками (простая линия, можно добавить)
+  },
+  swapFx: (m) => {
+    spawnParticles(player.pos.x, player.pos.y+1, player.pos.z, 0x3366ff, 40, 3, 1);
+  },
 };
 for (const [t, f] of Object.entries(EVENTS)) net.on(t, f);
 
@@ -621,6 +635,7 @@ net.on('init', (m) => {
     for (const pr of m.snapshot.projectiles) EVENTS.projSpawn(pr);
     for (const mn of m.snapshot.mines) EVENTS.mineSpawn(mn);
   }
+  if (m.zones) m.zones.forEach(z => EVENTS.zoneSpawn(z));
   setStatus(`онлайн · игроков: ${remotePlayers.size}`);
 });
 net.on('join',  (m) => addRemotePlayer(m.id, { x: 0.5, y: 80, z: 0.5, yaw: 0, nickname: m.nickname }));
@@ -644,6 +659,7 @@ net.on('mana', (m) => { stats.mana = m.mana; renderStats(); });
 net.on('effects', (m) => {
   activeEffects.clear();
   for (const it of m.list) activeEffects.set(it.e, { until: it.until, power: it.power });
+  setBlindness(activeEffects.has('blind'));
 });
 net.on('damaged', (m) => {
   stats.hp = m.hp; renderStats(); damageFlash();
@@ -659,6 +675,7 @@ net.on('respawn', (m) => {
   if (m.id !== myId) return;
   stats.hp = 20; renderStats();
   activeEffects.clear();
+  setBlindness(false);
   let attempts = 0;
   let foundSpot = false;
   let spawnX = 0, spawnZ = 0, spawnY = 0;
@@ -720,6 +737,7 @@ function suicide() {
   damageFlash();
   stats.hp = 20;
   activeEffects.clear();
+  setBlindness(false);
   renderStats();
   let attempts = 0;
   let foundSpot = false;
@@ -767,12 +785,27 @@ chatInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter' && chatInput.value.trim()) {
     let message = chatInput.value.trim();
     if (message.startsWith('/')) {
+      // Команды
       if (message === '/kill') {
         suicide();
       } else if (message === '/fly') {
         player.flying = !player.flying;
         player.vel.set(0, 0, 0);
         addChatMessage('Система', player.flying ? 'Режим полёта включён' : 'Режим полёта выключен');
+      } else if (message === '/shadowstep') {
+        net.send('shadow_step', {});
+        addChatMessage('Система', 'Теневой шаг активирован');
+      } else if (message.startsWith('/swap ')) {
+        const targetNick = message.slice(6);
+        let targetId = null;
+        for (const [id, rp] of remotePlayers) {
+          if (rp.nickname === targetNick) { targetId = id; break; }
+        }
+        if (targetId) {
+          net.send('swap_positions', { target: targetId });
+        } else {
+          addChatMessage('Система', `Игрок ${targetNick} не найден`);
+        }
       } else {
         addChatMessage('Система', `Неизвестная команда: ${message}`);
       }
@@ -823,7 +856,7 @@ function makeLocalCtx() {
       if (effectActive('curse')) return;
       stats.hp = Math.min(20, stats.hp + a); renderStats();
     },
-    clearDebuffs: () => { for (const b of ['burning', 'slow', 'freeze', 'curse']) activeEffects.delete(b); },
+    clearDebuffs: () => { for (const b of ['burning', 'slow', 'freeze', 'curse', 'blind']) activeEffects.delete(b); setBlindness(false); },
     getMana: () => stats.mana,
     spendMana: (id, c) => { stats.mana -= c; renderStats(); },
     teleportPlayer: (id, x, y, z) => { player.pos.set(x, y, z); player.vel.set(0, 0, 0); },
@@ -1016,6 +1049,10 @@ function updatePlayer(dt) {
   if (effectActive('slow'))   speedMul *= 0.5;
   if (effectActive('freeze')) speedMul = 0;
 
+  // Прыгучесть
+  let jumpPower = JUMP_SPEED;
+  if (effectActive('jump_boost')) jumpPower *= 1.5;
+
   const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
   const right   = new THREE.Vector3( Math.cos(yaw), 0, -Math.sin(yaw));
   const wish = new THREE.Vector3();
@@ -1040,12 +1077,22 @@ function updatePlayer(dt) {
       player.vel.y = keys.has('Space') ? 4 : keys.has('ShiftLeft') ? -4 : 0;
     } else {
       player.vel.y -= GRAVITY * dt;
-      if (keys.has('Space') && player.onGround && speedMul > 0) player.vel.y = JUMP_SPEED;
+      if (keys.has('Space') && player.onGround && speedMul > 0) player.vel.y = jumpPower;
     }
     player.onGround = false;
     moveAxis(dt, 'y');
     moveAxis(dt, 'x');
     moveAxis(dt, 'z');
+    
+    // Невесомость – двойной прыжок
+    if (effectActive('weightless')) {
+      if (!player.flying && !player.onGround && player.vel.y < 0) player.vel.y *= 0.98;
+      if (keys.has('Space') && !player.onGround && !player.doubleJumpUsed) {
+        player.vel.y = 6;
+        player.doubleJumpUsed = true;
+      }
+      if (player.onGround) player.doubleJumpUsed = false;
+    }
   }
 
   if (player.pos.y < -30) {
@@ -1308,6 +1355,15 @@ function animate(now) {
       if (burn) {
         burnAcc += dt;
         if (burnAcc >= 1) { burnAcc -= 1; stats.hp -= burn.power; renderStats(); damageFlash(); }
+      }
+      // Регенерация в оффлайне
+      const regen = effectActive('regen');
+      if (regen && !effectActive('curse')) {
+        if (Math.floor(Date.now() / 1000) > (regen.lastRegenTick || 0)) {
+          regen.lastRegenTick = Math.floor(Date.now() / 1000);
+          stats.hp = Math.min(20, stats.hp + regen.power);
+          renderStats();
+        }
       }
       renderStats();
     }

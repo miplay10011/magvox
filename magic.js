@@ -53,7 +53,6 @@ export function createMagicEngine(ctx) {
     if (n('ice'))  ctx.addEffect(targetId, n('ice') >= 3 ? 'freeze' : 'slow',
                                  n('ice') >= 3 ? 1.5 : 4, n('ice'));
     if (n('dark')) ctx.addEffect(targetId, 'curse', 6 + 2 * n('dark'), n('dark'));
-    // не наносим урон здесь, только эффекты
   }
 
   function cast(casterId, els, dirArr, origin, yaw) {
@@ -72,6 +71,103 @@ export function createMagicEngine(ctx) {
     dx /= dl; dy /= dl; dz /= dl;
     const ox = origin.x, oy = origin.y, oz = origin.z;
 
+    // ========== НОВЫЕ ЗАКЛИНАНИЯ ==========
+    // Прыгучесть (air + earth)
+    if (n('air') === 2 && n('earth') === 1) {
+      ctx.addEffect(casterId, 'jump_boost', 15, 2);
+      return;
+    }
+    // Регенерация (water + light)
+    if (n('water') === 1 && n('light') === 2) {
+      ctx.addEffect(casterId, 'regen', 10, 1);
+      return;
+    }
+    // Огнеупорность (fire + earth + shield)
+    if (n('fire') === 1 && n('earth') === 1 && n('shield') === 1) {
+      ctx.addEffect(casterId, 'fire_resist', 20, 1);
+      return;
+    }
+    // Огненная аура (fire + air + air)
+    if (n('fire') >= 2 && n('air') >= 2) {
+      ctx.addEffect(casterId, 'fire_aura', 12, 2);
+      return;
+    }
+    // Ледяная кожа (ice + earth + earth)
+    if (n('ice') === 1 && n('earth') === 2) {
+      ctx.addEffect(casterId, 'ice_skin', 15, 1);
+      return;
+    }
+    // Разряд (beam + fire + air)
+    if (n('beam') === 1 && n('fire') === 1 && n('air') === 1) {
+      ctx.addEffect(casterId, 'chain_lightning', 8, 1);
+      return;
+    }
+    // Ослепление (light + dark + air)
+    if (n('light') === 1 && n('dark') === 1 && n('air') === 1) {
+      // накладываем слепоту на всех врагов в радиусе 5
+      for (const [id, p] of ctx.getPlayers()) {
+        if (id === casterId) continue;
+        const dist = Math.hypot(p.x - ox, p.z - oz);
+        if (dist < 5) {
+          ctx.addEffect(id, 'blind', 3, 1);
+        }
+      }
+      return;
+    }
+    // Теневой шаг (dark + air + air)
+    if (n('dark') === 2 && n('air') === 1) {
+      // Отправляем специальное сообщение, которое сервер обработает
+      ctx.emit('shadowStepRequest', { casterId });
+      return;
+    }
+    // Невесомость (air + air + light)
+    if (n('air') === 2 && n('light') === 1) {
+      ctx.addEffect(casterId, 'weightless', 10, 1);
+      return;
+    }
+    // Барьер (shield + earth)
+    if (n('shield') === 1 && n('earth') === 1) {
+      ctx.addEffect(casterId, 'ward', 15, { power: 4 });
+      return;
+    }
+    // Цепочка послушания (dark + beam + fire)
+    if (n('dark') === 1 && n('beam') === 1 && n('fire') === 1) {
+      // выбираем ближайшего врага
+      let nearest = null, minDist = Infinity;
+      for (const [id, p] of ctx.getPlayers()) {
+        if (id === casterId) continue;
+        const dist = Math.hypot(p.x - ox, p.z - oz);
+        if (dist < minDist && dist < 8) { minDist = dist; nearest = id; }
+      }
+      if (nearest) {
+        ctx.chainPlayers(casterId, nearest);
+        ctx.emit('systemMessage', { message: `Цепочка послушания связала вас с ${players.get(nearest)?.nickname}` });
+      }
+      return;
+    }
+    // Массовый левитирующий круг (air + water + earth)
+    if (n('air') === 2 && n('water') === 1 && n('earth') === 1) {
+      const radius = 4;
+      ctx.addZone(ox, oz, radius, 'levitate_circle', casterId, 8);
+      ctx.emit('systemMessage', { message: 'Вы создали левитирующий круг!' });
+      return;
+    }
+    // Обмен местами (dark + light + earth)
+    if (n('dark') === 1 && n('light') === 1 && n('earth') === 1) {
+      let nearest = null, minDist = Infinity;
+      for (const [id, p] of ctx.getPlayers()) {
+        if (id === casterId) continue;
+        const dist = Math.hypot(p.x - ox, p.z - oz);
+        if (dist < minDist && dist < 10) { minDist = dist; nearest = id; }
+      }
+      if (nearest) {
+        ctx.swapPositions(casterId, nearest);
+        ctx.emit('systemMessage', { message: 'Вы обменялись местами!' });
+      }
+      return;
+    }
+
+    // === СТАРЫЕ ЗАКЛИНАНИЯ ===
     if (n('shield')) {
       if (n('dark'))  return placeMine(casterId, ox, oy - 1.4, oz, n, len);
       if (n('earth')) return stoneWall(ox, oz, yaw, len);
