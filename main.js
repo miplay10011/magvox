@@ -326,7 +326,8 @@ const effectsEl = document.getElementById('effects-hud');
 
 function renderStats() {
   let s = '';
-  for (let i = 0; i < 10; i++)
+  // 10 сердец – это 20 HP, а у нас 50 HP → 25 сердец
+  for (let i = 0; i < 25; i++)
     s += `<span style="color:${stats.hp >= (i + 1) * 2 - 1 ? '#e33' : '#444'}">\u2665</span>`;
   s += '  ';
   for (let i = 0; i < 5; i++)
