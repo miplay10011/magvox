@@ -4,7 +4,7 @@ import { World, buildChunkMesh, buildLODMesh, AIR, BLOCK_COLORS, CHUNK_SIZE,
 import { Network } from './network.js';
 import { createMagicEngine } from './magic.js';
 import { initParticles, spawnParticles, updateParticles } from './particles.js';
-import { initInventory, toggleInventory, addItem, refreshUI, selectedSlot, inventory, held, invOpen, clickSlot, setGlobals } from './inventory.js';
+import { initInventory, toggleInventory, addItem, refreshUI, selectedSlot, inventory, held, invOpen, clickSlot } from './inventory.js';
 
 // ========== Рендер ==========
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -87,6 +87,7 @@ function createSettingsMenu() {
     settingsMenu.append(title, sensLabel, closeBtn);
     document.body.appendChild(settingsMenu);
 }
+
 function toggleSettings(open) {
     settingsOpen = open;
     if (!settingsMenu) return;
@@ -869,7 +870,7 @@ function addChatMessage(sender, message) {
   chatMessages.appendChild(msgDiv);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
-setGlobals(player, renderer, keys, () => settingsOpen, addChatMessage);
+
 function suicide() {
   stats.hp = 0;
   renderStats();
@@ -950,8 +951,6 @@ chatInput.addEventListener('keydown', (e) => {
 });
 
 createSettingsMenu();
-setGlobals(player, renderer, keys, () => settingsOpen, addChatMessage);
-initInventory();
 
 // ========== Оффлайн-магия ==========
 let localMagic = null;
@@ -1271,6 +1270,144 @@ function intersectsPlayer(bx, by, bz) {
 }
 
 // ========== Инвентарь ==========
+const INV_SIZE = 37;
+const inventory = new Array(INV_SIZE).fill(null);
+let selectedSlot = 0, held = null, invOpen = false;
+
+function addItem(type) {
+  let slot = inventory.find(s => s && s.type === type && s.count < 64);
+  if (slot) { slot.count++; refreshUI(); return; }
+  const i = inventory.findIndex(s => s === null);
+  if (i !== -1) { inventory[i] = { type, count: 1 }; refreshUI(); }
+}
+
+function renderSlot(el, slot) {
+  el.innerHTML = '';
+  if (!slot) return;
+  const sw = document.createElement('div');
+  sw.className = 'swatch';
+  sw.style.background = '#' + BLOCK_COLORS[slot.type].getHexString();
+  const cnt = document.createElement('div');
+  cnt.className = 'count';
+  cnt.textContent = slot.count;
+  el.append(sw, cnt);
+}
+
+const hotbarEl = document.getElementById('hotbar');
+const hudSlots = [];
+for (let i = 0; i < 9; i++) {
+  const el = document.createElement('div');
+  el.className = 'slot';
+  hotbarEl.appendChild(el);
+  hudSlots.push(el);
+}
+
+const invEl = document.getElementById('inventory');
+const invSlots = [];
+function makeInvSlot(index, container) {
+  const el = document.createElement('div');
+  el.className = 'slot';
+  el.addEventListener('mousedown', (e) => { e.preventDefault(); clickSlot(index, e.button); });
+  container.appendChild(el);
+  invSlots[index] = el;
+}
+for (let i = 9; i < 36; i++) makeInvSlot(i, document.getElementById('inv-main'));
+for (let i = 0; i < 9; i++)  makeInvSlot(i, document.getElementById('inv-hotbar-row'));
+
+const recycleSlotDiv = document.getElementById('recycle-slot');
+if (recycleSlotDiv) {
+  recycleSlotDiv.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    clickSlot(36, e.button);
+  });
+}
+
+function clickSlot(i, button) {
+  const slot = inventory[i];
+  if (button === 0) {
+    if (!held && slot) { held = slot; inventory[i] = null; }
+    else if (held && !slot) { inventory[i] = held; held = null; }
+    else if (held && slot && slot.type === held.type) {
+      const move = Math.min(64 - slot.count, held.count);
+      slot.count += move; held.count -= move;
+      if (held.count <= 0) held = null;
+    } else if (held && slot) { inventory[i] = held; held = slot; }
+  } else if (button === 2) {
+    if (!held && slot) {
+      const take = Math.ceil(slot.count / 2);
+      held = { type: slot.type, count: take };
+      slot.count -= take;
+      if (slot.count <= 0) inventory[i] = null;
+    } else if (held && !slot) {
+      inventory[i] = { type: held.type, count: 1 };
+      if (--held.count <= 0) held = null;
+    } else if (held && slot && slot.type === held.type && slot.count < 64) {
+      slot.count++;
+      if (--held.count <= 0) held = null;
+    }
+  }
+  refreshUI();
+}
+
+const heldEl = document.getElementById('held-item');
+document.addEventListener('mousemove', (e) => {
+  if (!held) return;
+  heldEl.style.left = e.clientX - 18 + 'px';
+  heldEl.style.top  = e.clientY - 18 + 'px';
+});
+
+function refreshUI() {
+  for (let i = 0; i < 9; i++) {
+    renderSlot(hudSlots[i], inventory[i]);
+    hudSlots[i].classList.toggle('selected', i === selectedSlot);
+  }
+  for (let i = 0; i < 36; i++) renderSlot(invSlots[i], inventory[i]);
+  if (recycleSlotDiv) renderSlot(recycleSlotDiv, inventory[36]);
+  heldEl.style.display = held ? 'block' : 'none';
+  if (held) {
+    heldEl.style.background = '#' + BLOCK_COLORS[held.type].getHexString();
+    heldEl.querySelector('.count').textContent = held.count;
+  }
+}
+refreshUI();
+
+const ALL_BLOCK_TYPES = [GRASS, DIRT, STONE, WOOD, LEAVES, PLANKS, SAND, GRAVEL, COAL_ORE, IRON_ORE];
+function recycleItem() {
+  const slot = inventory[36];
+  if (!slot) {
+    addChatMessage('Система', 'Положите блок в синий слот, чтобы переработать');
+    return;
+  }
+  const newType = ALL_BLOCK_TYPES[Math.floor(Math.random() * ALL_BLOCK_TYPES.length)];
+  slot.type = newType;
+  slot.count = 1;
+  refreshUI();
+  const pos = player.pos;
+  spawnParticles(pos.x, pos.y + 1, pos.z, BLOCK_COLORS[newType].getHex(), 30, 2.5, 1.2);
+  addChatMessage('Система', `Предмет превращён в ${Object.keys(BLOCK_COLORS)[newType] || 'блок'}!`);
+}
+
+const recycleBtn = document.getElementById('recycle-button');
+if (recycleBtn) {
+  recycleBtn.addEventListener('click', () => recycleItem());
+}
+
+function toggleInventory() {
+  invOpen = !invOpen;
+  invEl.classList.toggle('open', invOpen);
+  if (invOpen) {
+    document.exitPointerLock();
+    keys.clear();
+  } else {
+    if (held) {
+      for (let n = held.count; n > 0; n--) addItem(held.type);
+      held = null;
+    }
+    if (!settingsOpen) renderer.domElement.requestPointerLock();
+  }
+  refreshUI();
+}
+invEl.addEventListener('contextmenu', (e) => e.preventDefault());
 
 // ========== Действия мыши ==========
 document.addEventListener('contextmenu', (e) => e.preventDefault());
