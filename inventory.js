@@ -1,4 +1,3 @@
-// inventory.js – модуль инвентаря, переработки и управления предметами
 import { BLOCK_COLORS, GRASS, DIRT, STONE, WOOD, LEAVES, PLANKS, SAND, GRAVEL, COAL_ORE, IRON_ORE } from './world.js';
 import { addChatMessage } from './ui.js';
 import { spawnParticles } from './particles.js';
@@ -14,14 +13,12 @@ export let invOpen = false;
 
 const ALL_BLOCK_TYPES = [GRASS, DIRT, STONE, WOOD, LEAVES, PLANKS, SAND, GRAVEL, COAL_ORE, IRON_ORE];
 
-// DOM-элементы (инициализируются в initInventory)
 let hotbarEl = null;
 let hudSlots = [];
 let invSlots = [];
 let recycleSlotDiv = null;
 let recycleBtn = null;
 
-// ========== Отрисовка слота ==========
 export function renderSlot(el, slot) {
   el.innerHTML = '';
   if (!slot) return;
@@ -34,7 +31,6 @@ export function renderSlot(el, slot) {
   el.append(sw, cnt);
 }
 
-// ========== Обновление всего UI инвентаря ==========
 export function refreshUI() {
   if (!hudSlots.length) return;
   for (let i = 0; i < 9; i++) {
@@ -56,10 +52,9 @@ export function refreshUI() {
   }
 }
 
-// ========== Обработка клика по слоту ==========
 export function clickSlot(i, button) {
   const slot = inventory[i];
-  if (button === 0) { // левая кнопка
+  if (button === 0) {
     if (!held && slot) {
       held = slot;
       inventory[i] = null;
@@ -75,7 +70,7 @@ export function clickSlot(i, button) {
       inventory[i] = held;
       held = slot;
     }
-  } else if (button === 2) { // правая кнопка
+  } else if (button === 2) {
     if (!held && slot) {
       const take = Math.ceil(slot.count / 2);
       held = { type: slot.type, count: take };
@@ -92,7 +87,6 @@ export function clickSlot(i, button) {
   refreshUI();
 }
 
-// ========== Добавление предмета в инвентарь ==========
 export function addItem(type) {
   let slot = inventory.find(s => s && s.type === type && s.count < 64);
   if (slot) {
@@ -107,7 +101,6 @@ export function addItem(type) {
   }
 }
 
-// ========== Переработка предмета (синий слот) ==========
 export function recycleItem() {
   const slot = inventory[36];
   if (!slot) {
@@ -123,7 +116,6 @@ export function recycleItem() {
   addChatMessage('Система', `Предмет превращён в ${Object.keys(BLOCK_COLORS)[newType] || 'блок'}!`);
 }
 
-// ========== Открыть/закрыть инвентарь ==========
 export function toggleInventory() {
   invOpen = !invOpen;
   const invEl = document.getElementById('inventory');
@@ -141,7 +133,6 @@ export function toggleInventory() {
   refreshUI();
 }
 
-// ========== Инициализация DOM элементов ==========
 export function initInventory() {
   hotbarEl = document.getElementById('hotbar');
   if (!hotbarEl) return;
