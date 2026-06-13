@@ -382,7 +382,7 @@ let myId = null;
 let myNickname = '';
 const remotePlayers = new Map();
 
-// Функция создания модели игрока (исправленные пропорции)
+// Функция создания модели игрока с доступом к конечностям
 function createPlayerModel(color) {
   const group = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.1 });
@@ -390,25 +390,31 @@ function createPlayerModel(color) {
   // Ноги (длина 0.6, ширина 0.3, глубина 0.3)
   const legGeo = new THREE.BoxGeometry(0.3, 0.6, 0.3);
   const leftLeg = new THREE.Mesh(legGeo, mat);
+  leftLeg.name = 'leftLeg';
   leftLeg.position.set(-0.2, 0.3, 0);
   group.add(leftLeg);
+  
   const rightLeg = new THREE.Mesh(legGeo, mat);
+  rightLeg.name = 'rightLeg';
   rightLeg.position.set(0.2, 0.3, 0);
   group.add(rightLeg);
   
-  // Торс (высота 0.5, ширина 0.6, глубина 0.3)
+  // Торс (высота 0.8, ширина 0.6, глубина 0.3)
   const torsoGeo = new THREE.BoxGeometry(0.6, 0.8, 0.3);
   const torso = new THREE.Mesh(torsoGeo, mat);
   torso.position.set(0, 1, 0);
   group.add(torso);
   
   // Руки (длина 0.6, ширина 0.3, глубина 0.3)
-  const armGeo = new THREE.BoxGeometry(0.15, 1, 0.15);
+  const armGeo = new THREE.BoxGeometry(0.3, 0.6, 0.3);
   const leftArm = new THREE.Mesh(armGeo, mat);
-  leftArm.position.set(-0.45, 0.85, 0);
+  leftArm.name = 'leftArm';
+  leftArm.position.set(-0.45, 1.1, 0);
   group.add(leftArm);
+  
   const rightArm = new THREE.Mesh(armGeo, mat);
-  rightArm.position.set(0.45, 0.85, 0);
+  rightArm.name = 'rightArm';
+  rightArm.position.set(0.45, 1.1, 0);
   group.add(rightArm);
   
   // Голова (куб 0.5x0.5x0.5)
@@ -424,39 +430,28 @@ function createPlayerModel(color) {
   hitbox.position.set(0, PLAYER.height / 2, 0);
   group.add(hitbox);
   
+  // Сохраняем ссылки для анимации
+  group.userData = { leftArm, rightArm, leftLeg, rightLeg };
+  
   return group;
 }
 
-// Функция временной красной вспышки (с сохранением оригинального цвета)
+// Функция временной красной вспышки (без изменений)
 function flashPlayerModel(group, duration = 200) {
   if (!group) return;
-  // Сохраняем оригинальные цвета в userData, если ещё не сохранены
   group.children.forEach(child => {
     if (child.isMesh && child.material) {
       if (Array.isArray(child.material)) {
         child.material.forEach(mat => {
-          if (!mat.userData.originalColor) {
-            mat.userData.originalColor = mat.color.clone();
-          }
+          if (!mat.userData.originalColor) mat.userData.originalColor = mat.color.clone();
+          mat.color.setHex(0xff0000);
         });
       } else {
-        if (!child.material.userData.originalColor) {
-          child.material.userData.originalColor = child.material.color.clone();
-        }
-      }
-    }
-  });
-  // Устанавливаем красный
-  group.children.forEach(child => {
-    if (child.isMesh && child.material) {
-      if (Array.isArray(child.material)) {
-        child.material.forEach(mat => mat.color.setHex(0xff0000));
-      } else {
+        if (!child.material.userData.originalColor) child.material.userData.originalColor = child.material.color.clone();
         child.material.color.setHex(0xff0000);
       }
     }
   });
-  // Отменяем предыдущий таймер, если есть
   if (group._flashTimer) clearTimeout(group._flashTimer);
   group._flashTimer = setTimeout(() => {
     group.children.forEach(child => {
@@ -481,9 +476,17 @@ function addRemotePlayer(id, p) {
   const group = createPlayerModel(color);
   group.position.set(p.x, p.y, p.z);
   scene.add(group);
-  remotePlayers.set(id, { group, target: new THREE.Vector3(p.x, p.y, p.z), yaw: p.yaw || 0, nickname: p.nickname || `Player ${id}` });
+  remotePlayers.set(id, { 
+    group, 
+    target: new THREE.Vector3(p.x, p.y, p.z), 
+    yaw: p.yaw || 0, 
+    nickname: p.nickname || `Player ${id}`,
+    lastPos: new THREE.Vector3(p.x, p.y, p.z),
+    phase: 0
+  });
   setStatus(`онлайн · игроков: ${remotePlayers.size}`);
 }
+
 function removeRemotePlayer(id) {
   const rp = remotePlayers.get(id);
   if (!rp) return;
@@ -491,13 +494,52 @@ function removeRemotePlayer(id) {
   remotePlayers.delete(id);
   setStatus(`онлайн · игроков: ${remotePlayers.size}`);
 }
+
 function updateRemotePlayers(dt) {
   const k = 1 - Math.pow(0.0001, dt);
   const tmp = new THREE.Vector3();
+  
   for (const rp of remotePlayers.values()) {
+    // Плавное движение позиции
     tmp.set(rp.target.x, rp.target.y, rp.target.z);
     rp.group.position.lerp(tmp, k);
     rp.group.rotation.y += (rp.yaw - rp.group.rotation.y) * k;
+    
+    // Анимация рук и ног
+    // Вычисляем скорость (расстояние от последней позиции)
+    const dx = rp.group.position.x - rp.lastPos.x;
+    const dz = rp.group.position.z - rp.lastPos.z;
+    const speed = Math.hypot(dx, dz);
+    const animSpeed = 12.0; // частота качания
+    const armAmp = 0.8;     // амплитуда рук
+    const legAmp = 0.5;     // амплитуда ног
+    
+    if (speed > 0.01) {
+      // При движении увеличиваем фазу
+      rp.phase += speed * animSpeed;
+    } else {
+      // При остановке фаза стремится к 0
+      rp.phase *= 0.95;
+    }
+    
+    // Получаем части тела
+    const leftArm = rp.group.userData.leftArm;
+    const rightArm = rp.group.userData.rightArm;
+    const leftLeg = rp.group.userData.leftLeg;
+    const rightLeg = rp.group.userData.rightLeg;
+    
+    if (leftArm && rightArm && leftLeg && rightLeg) {
+      const angle = Math.sin(rp.phase) * armAmp;
+      leftArm.rotation.x = angle;
+      rightArm.rotation.x = -angle;
+      
+      const legAngle = Math.sin(rp.phase) * legAmp;
+      leftLeg.rotation.x = -legAngle;
+      rightLeg.rotation.x = legAngle;
+    }
+    
+    // Запоминаем позицию для следующего кадра
+    rp.lastPos.copy(rp.group.position);
   }
 }
 
