@@ -59,22 +59,35 @@ export class World {
 
   terrainHeight(wx, wz) {
     const s = this.seed;
-    // Основной рельеф
+    // Базовый шум (глобальный)
     let h = 24;
     h += this.noise.noise(wx / 80 + s, wz / 80 + s, 0)   * 16;
     h += this.noise.noise(wx / 30 + s, wz / 30 + s, 100) * 6;
     h += this.noise.noise(wx / 12 + s, wz / 12 + s, 200) * 2;
+
     // Биомная модуляция
     const biome = this.getBiome(wx, wz);
-    if (biome === 'desert') h -= 4;
-    else if (biome === 'mountain') h += 12;
+    if (biome === 'desert') {
+      // Пустыня: гладкая, низкая
+      h = 28 + this.noise.noise(wx / 50 + s, wz / 50 + s, 400) * 3;
+      h = Math.max(24, Math.min(35, h));
+    } else if (biome === 'mountain') {
+      // Горы: высокие, рельефные, с террасами
+      h += this.noise.noise(wx / 20 + s, wz / 20 + s, 150) * 20;
+      h += Math.abs(this.noise.noise(wx / 6 + s, wz / 6 + s, 250)) * 12;
+      h = Math.max(45, Math.min(63, h));
+    } else {
+      // Леса: умеренные холмы
+      h += this.noise.noise(wx / 25 + s, wz / 25 + s, 300) * 6;
+      h = Math.max(20, Math.min(50, h));
+    }
     return Math.max(1, Math.min(WORLD_HEIGHT - 1, Math.floor(h)));
   }
 
   getBiome(wx, wz) {
     const val = this.noise.noise(wx * 0.005 + this.seed, wz * 0.005 + this.seed, 300);
-    if (val < -0.2) return 'desert';
-    if (val > 0.3) return 'mountain';
+    if (val < -0.25) return 'desert';
+    if (val > 0.35) return 'mountain';
     return 'forest';
   }
 
@@ -106,20 +119,19 @@ export class World {
           chunk.set(x, y, z, block);
         }
         // Дополнительный слой песка в пустыне
-        if (biome === 'desert' && height < WORLD_HEIGHT-1 && Math.random() < 0.2) {
+        if (biome === 'desert' && height < WORLD_HEIGHT-1 && Math.random() < 0.3) {
           chunk.set(x, height, z, SAND);
         }
       }
     }
 
-    // 2. Генерация больших деревьев (1 на ~10 чанков)
-    if (Math.random() < 0.1) {
+    // 2. Генерация больших деревьев (только в лесах, 1 на ~10 чанков)
+    if (this.getBiome(ox + 8, oz + 8) === 'forest' && Math.random() < 0.1) {
       const centerX = Math.floor(CHUNK_SIZE / 2);
       const centerZ = Math.floor(CHUNK_SIZE / 2);
       const wx = ox + centerX, wz = oz + centerZ;
       const groundY = this.terrainHeight(wx, wz);
-      const biome = this.getBiome(wx, wz);
-      if (biome === 'forest' && groundY < 55) {
+      if (groundY < 55) {
         this.generateBigTree(chunk, centerX, centerZ, groundY);
       }
     }
@@ -141,7 +153,7 @@ export class World {
     const startX = cx, startZ = cz;
     const startY = groundY;
 
-    // Ствол (3x3 толстый)
+    // Ствол 3x3
     for (let h = 0; h < trunkHeight; h++) {
       const y = startY + h;
       if (y >= WORLD_HEIGHT) break;
@@ -273,6 +285,7 @@ export function buildChunkMesh(world, chunk) {
   return new THREE.Mesh(geo, CHUNK_MATERIAL);
 }
 
+// ---------- LOD меш с поддержкой биомов ----------
 export function buildLODMesh(world, gx, gz, level) {
   const step = 1 << level, n = CHUNK_SIZE, size = n * step;
   const ox = gx * size, oz = gz * size;
@@ -282,6 +295,7 @@ export function buildLODMesh(world, gx, gz, level) {
     for (let i = -1; i <= n; i++)
       H[(i+1)+(j+1)*W] = world.terrainHeight(ox + i*step, oz + j*step);
   const h = (i,j) => H[(i+1)+(j+1)*W];
+
   const positions = [], normals = [], colors = [], indices = [];
   const Y_OFF = -0.05;
   function quad(verts, normal, c) {
@@ -291,12 +305,21 @@ export function buildLODMesh(world, gx, gz, level) {
     }
     indices.push(base, base+1, base+2, base, base+2, base+3);
   }
-  const grass = BLOCK_COLORS[GRASS], dirt = BLOCK_COLORS[DIRT], stone = BLOCK_COLORS[STONE];
+  const dirt = BLOCK_COLORS[DIRT];
+  const stone = BLOCK_COLORS[STONE];
+
   for (let j = 0; j < n; j++)
     for (let i = 0; i < n; i++) {
       const y = h(i,j);
       const x0 = ox + i*step, z0 = oz + j*step, x1 = x0+step, z1 = z0+step;
-      quad([[x0,y,z1],[x1,y,z1],[x1,y,z0],[x0,y,z0]], [0,1,0], grass);
+      const biome = world.getBiome(x0, z0);
+      let surfaceType = GRASS;
+      if (biome === 'desert') surfaceType = SAND;
+      else if (biome === 'mountain') surfaceType = STONE;
+      const topColor = BLOCK_COLORS[surfaceType];
+      
+      quad([[x0,y,z1],[x1,y,z1],[x1,y,z0],[x0,y,z0]], [0,1,0], topColor);
+      
       const walls = [
         [h(i+1,j), [1,0,0], (a,b) => [[x1,a,z0],[x1,b,z0],[x1,b,z1],[x1,a,z1]]],
         [h(i-1,j), [-1,0,0], (a,b) => [[x0,a,z1],[x0,b,z1],[x0,b,z0],[x0,a,z0]]],
@@ -306,6 +329,7 @@ export function buildLODMesh(world, gx, gz, level) {
       for (const [hn, dir, make] of walls)
         if (hn < y) quad(make(hn, y), dir, (y-hn) <= 4 ? dirt : stone);
     }
+
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute('normal',   new THREE.Float32BufferAttribute(normals, 3));
