@@ -143,7 +143,7 @@ function generateBigTree(editsMap, cx, cz, groundY) {
 
 seed = Math.floor(Math.random() * 10000);
 const edits = new Map();
-const players = new Map(); // id -> { ws, x, y, z, yaw, hp, armor, mana, lastAttack, effects, nickname, chainLink?, lastAuraTick }
+const players = new Map(); // id -> { ws, x, y, z, yaw, hp, armor, mana, lastAttack, effects, nickname, chainLink?, lastAuraTick, phoenixUsed? }
 let nextId = 1;
 
 // Предварительная генерация деревьев
@@ -173,14 +173,21 @@ function syncEffects(q) {
   send(q.ws, 'effects', { list: [...q.effects].map(([e, v]) => ({ e, until: v.until, power: v.power })) });
 }
 
+// ========== Обработка урона с учётом новых эффектов ==========
 function applyDamage(targetId, dmg, src = {}) {
   const target = players.get(targetId);
   if (!target) return;
   const attackerId = src.attackerId;
   let weapon = src.weapon || 'неизвестного оружия';
   
-  if (weapon.includes('огн') && target.effects.has('fire_resist')) dmg *= 0.5;
+  // Огнеупорность
+  if (weapon.includes('огн') && target.effects.has('fire_resist')) dmg *= target.effects.get('fire_resist').power;
+  // Уязвимость (+50% урона)
+  if (target.effects.has('vulnerability')) dmg *= 1.5;
+  // Слабость (-50% урона)
+  if (target.effects.has('weakness')) dmg *= 0.5;
   
+  // Барьер (личный щит)
   const ward = target.effects.get('ward');
   if (ward && dmg > 0) {
     const absorbed = Math.min(ward.power, dmg);
@@ -192,31 +199,59 @@ function applyDamage(targetId, dmg, src = {}) {
   dmg *= 1 - 0.04 * (target.armor + bonus);
   if (dmg <= 0 && !(src.kb > 0)) return;
   
+  // Ледяная кожа: замедляем атакующего
   if (target.effects.has('ice_skin') && attackerId && attackerId !== targetId) {
     const attacker = players.get(attackerId);
     if (attacker && !attacker.effects.has('freeze')) {
-      attacker.effects.set('freeze', { until: Date.now() + 2000, power: 1 });
+      attacker.effects.set('freeze', { until: Date.now() + (target.effects.get('ice_skin').power || 2000), power: 1 });
       syncEffects(attacker);
     }
   }
   
+  // Цепочка послушания
   if (target.chainLink && players.has(target.chainLink)) {
     const linked = players.get(target.chainLink);
     if (linked && linked !== target) {
-      const linkedDmg = dmg * 0.5;
+      const linkedDmg = dmg * (target.chainTransfer || 0.5);
       if (linkedDmg > 0) {
         applyDamage(target.chainLink, linkedDmg, { ...src, weapon: 'цепочки послушания', attackerId, kb: 0 });
       }
     }
   }
   
+  // Сфера абсолютной защиты – отражение
+  if (target.sphereReflect && target.sphereReflect > 0 && attackerId && attackerId !== targetId) {
+    const reflected = dmg * target.sphereReflect;
+    applyDamage(attackerId, reflected, { weapon: 'отражённый урон', attackerId: targetId });
+  }
+  
   const wasAlive = target.hp > 0;
   target.hp -= Math.max(0, dmg);
+  
+  // Феникс-возрождение (если hp < 4 и не использовано за 2 минуты)
+  if (target.hp <= 4 && !target.phoenixUsed && target.effects.has('phoenix')) {
+    target.phoenixUsed = true;
+    target.hp = 8;
+    broadcast('systemMessage', { message: `${target.nickname} возродился как Феникс!` });
+    broadcast('hp', { id: targetId, hp: target.hp });
+    // слепота и страх вокруг
+    for (const [id, p] of players) {
+      if (id === targetId) continue;
+      if (Math.hypot(p.x - target.x, p.z - target.z) < 8) {
+        p.effects.set('blind', { until: Date.now() + 5000, power: 1 });
+        p.effects.set('fear', { until: Date.now() + 5000, power: 1 });
+        syncEffects(p);
+      }
+    }
+    return;
+  }
   
   if (target.hp <= 0 && wasAlive) {
     target.hp = 20; target.effects.clear(); syncEffects(target);
     broadcast('respawn', { id: targetId });
     broadcast('hp', { id: targetId, hp: 20 });
+    // сброс флага феникса при смерти
+    target.phoenixUsed = false;
     if (attackerId && attackerId !== targetId) {
       const attacker = players.get(attackerId);
       if (attacker) {
@@ -231,15 +266,57 @@ function applyDamage(targetId, dmg, src = {}) {
   }
 }
 
+// ========== Зоны эффектов ==========
 const activeZones = new Map(); // zoneId -> { x, z, radius, effect, owner, until }
-
 function addZone(x, z, radius, effect, ownerId, duration) {
   const id = Math.random();
   activeZones.set(id, { x, z, radius, effect, owner: ownerId, until: Date.now() + duration * 1000 });
   setTimeout(() => activeZones.delete(id), duration * 1000);
-  broadcast('zoneSpawn', { id, x, z, radius, effect });
+  broadcast('zoneSpawn', { id, x, z, radius, effect, duration });
 }
 
+// ========== Хранилище замедляющих зон (Вечный лёд разума) ==========
+const timeSlowZones = new Map(); // zoneId -> { x, z, radius, endTime, casterId }
+function addTimeSlowZone(casterId, x, z, radius, duration) {
+  const zoneId = Math.random();
+  timeSlowZones.set(zoneId, { x, z, radius, endTime: Date.now() + duration * 1000, casterId });
+  broadcast('timeSlowZone', { zoneId, x, z, radius, duration });
+  setTimeout(() => timeSlowZones.delete(zoneId), duration * 1000);
+}
+
+// ========== Тотемы ==========
+const activeTotems = new Map(); // totemId -> { x, z, radius, endTime, casterId, interval }
+function addTotem(casterId, x, z, radius, duration) {
+  const id = Math.random();
+  let lastTick = Date.now();
+  const interval = setInterval(() => {
+    const now = Date.now();
+    if (now - lastTick >= 3000) {
+      lastTick = now;
+      const playersInRange = [...players.values()].filter(p => p.id !== casterId && Math.hypot(p.x - x, p.z - z) < radius);
+      if (playersInRange.length) {
+        const randomTarget = playersInRange[Math.floor(Math.random() * playersInRange.length)];
+        // ускорение
+        randomTarget.effects.set('speed', { until: now + 5000, power: 1.5 });
+        syncEffects(randomTarget);
+        broadcast('totemCharge', { targetId: randomTarget.id, casterId });
+        // зарядка оружия
+        broadcast('totemPower', { targetId: randomTarget.id, power: 6 });
+      }
+    }
+  }, 3000);
+  activeTotems.set(id, { x, z, radius, endTime: Date.now() + duration * 1000, casterId, interval });
+  broadcast('totemSpawn', { id, x, z, radius, duration });
+  setTimeout(() => {
+    const t = activeTotems.get(id);
+    if (t) { clearInterval(t.interval); activeTotems.delete(id); broadcast('totemEnd', { id }); }
+  }, duration * 1000);
+}
+
+// ========== Сфера абсолютной защиты (временно активна у игрока) ==========
+// У игрока в объекте добавляем поля sphereEnd, sphereReflect
+
+// ========== Контекст для магии (предоставляется движку) ==========
 const magicCtx = {
   getBlock: (x,y,z) => getBlockType(x,y,z),
   setBlock(x,y,z,t) { edits.set(`${x},${y},${z}`, t); broadcast('blockUpdate',{x,y,z,t}); },
@@ -255,8 +332,15 @@ const magicCtx = {
     } else {
       q.effects.set(type, { until: Date.now() + dur*1000, power: powerValue });
     }
+    // Специфические эффекты
+    if (type === 'phoenix') {
+      q.phoenixUsed = false;
+    }
+    if (type === 'shadow_shackles') {
+      // фиксация обзора и медленное падение
+      // на клиенте будет обработано
+    }
     syncEffects(q);
-    if (type === 'fire_aura') q.lastAuraTick = 0;
   },
   healPlayer(id, amount) {
     const q = players.get(id);
@@ -267,7 +351,7 @@ const magicCtx = {
   clearDebuffs(id) {
     const q = players.get(id);
     if (!q) return;
-    for (const b of ['burning','slow','freeze','curse','blind']) q.effects.delete(b);
+    for (const b of ['burning','slow','freeze','curse','blind','weakness','vulnerability','disorient','disarm','shadow_shackles']) q.effects.delete(b);
     syncEffects(q);
   },
   getMana: (id) => players.get(id)?.mana ?? 0,
@@ -281,11 +365,11 @@ const magicCtx = {
     const q = players.get(id);
     if (!q) return;
     q.x = x; q.y = y; q.z = z;
-    broadcast('teleport', { id, x, y, z });
+    broadcast('teleport', { id, x: q.x, y: q.y, z: q.z });
   },
   emit: (type, data) => broadcast(type, data),
   addZone,
-  chainPlayers: (casterId, targetId) => {
+  chainPlayers: (casterId, targetId, transfer = 0.5) => {
     const caster = players.get(casterId);
     const target = players.get(targetId);
     if (!caster || !target) return false;
@@ -293,6 +377,8 @@ const magicCtx = {
     if (target.chainLink) delete players.get(target.chainLink)?.chainLink;
     caster.chainLink = targetId;
     target.chainLink = casterId;
+    caster.chainTransfer = transfer;
+    target.chainTransfer = transfer;
     broadcast('chainLink', { id1: casterId, id2: targetId });
     return true;
   },
@@ -307,16 +393,157 @@ const magicCtx = {
     broadcast('teleport', { id: id2, x: p2.x, y: p2.y, z: p2.z });
     broadcast('swapFx', { id1, id2 });
   },
+  // Для сферы абсолютной защиты
+  createProtectionSphere: (casterId, x, y, z, duration) => {
+    const caster = players.get(casterId);
+    if (!caster) return;
+    caster.sphereEnd = Date.now() + duration * 1000;
+    caster.sphereReflect = 0.5;
+    broadcast('sphereSpawn', { casterId, x, y, z, radius: 3, duration });
+    // лечение каждую секунду
+    const interval = setInterval(() => {
+      if (!caster || Date.now() > caster.sphereEnd) {
+        clearInterval(interval);
+        if (caster) caster.sphereReflect = null;
+        broadcast('sphereEnd', { casterId });
+        return;
+      }
+      for (const [id, p] of players) {
+        if (Math.hypot(p.x - x, p.z - z) < 3 && p.y > y-1 && p.y < y+2) {
+          p.hp = Math.min(20, p.hp + 2);
+          broadcast('hp', { id, hp: p.hp });
+        }
+      }
+    }, 1000);
+    setTimeout(() => {
+      clearInterval(interval);
+      if (caster) caster.sphereReflect = null;
+      broadcast('sphereEnd', { casterId });
+    }, duration * 1000);
+  },
+  // Астероид
+  summonAsteroid: (casterId, x, z, yaw) => {
+    const impactX = x + Math.sin(yaw) * 3;
+    const impactZ = z + Math.cos(yaw) * 3;
+    broadcast('asteroidStart', { casterId, x: impactX, z: impactZ, startY: 60 });
+    setTimeout(() => {
+      const radius = 5;
+      const dmg = 18;
+      // взрыв
+      explode(impactX, 0, impactZ, radius, dmg, casterId, (id) => {
+        players.get(id)?.effects.set('disorient', { until: Date.now() + 6000, power: 1 });
+        syncEffects(players.get(id));
+      });
+      // воронка из камня
+      for (let dx = -radius; dx <= radius; dx++) {
+        for (let dz = -radius; dz <= radius; dz++) {
+          const dist = Math.hypot(dx, dz);
+          if (dist < radius) {
+            const bx = Math.floor(impactX + dx);
+            const bz = Math.floor(impactZ + dz);
+            const y = terrainHeight(bx, bz);
+            for (let h = 0; h < Math.max(1, radius - Math.floor(dist)); h++) {
+              edits.set(`${bx},${y+h},${bz}`, STONE);
+              broadcast('blockUpdate', { x: bx, y: y+h, z: bz, t: STONE });
+            }
+          }
+        }
+      }
+      broadcast('asteroidImpact', { x: impactX, z: impactZ, radius });
+    }, 1500);
+  },
+  // Вечный лёд разума
+  createTimeSlowZone: (casterId, x, z, radius, duration) => addTimeSlowZone(casterId, x, z, radius, duration),
+  // Громокаменный топот
+  stomp: (casterId, x, z, radius) => {
+    broadcast('stompFx', { x, z, radius });
+    for (const [id, p] of players) {
+      if (id === casterId) continue;
+      const dist = Math.hypot(p.x - x, p.z - z);
+      if (dist < radius) {
+        p.y += 3;
+        broadcast('teleport', { id, x: p.x, y: p.y, z: p.z });
+        applyDamage(id, 8, { ax: x, az: z, kb: 12, attackerId: casterId, weapon: 'топота' });
+        p.effects.set('disarm', { until: Date.now() + 5000, power: 1 });
+        syncEffects(p);
+      }
+    }
+  },
+  // Чёрный вихрь (упрощённо – просто периодический урон в радиусе)
+  blackVortex: (casterId, x, z, duration) => {
+    broadcast('vortexSpawn', { vortexId: Math.random(), x, z, radius: 4, duration });
+    const endTime = Date.now() + duration * 1000;
+    const interval = setInterval(() => {
+      if (Date.now() > endTime) {
+        clearInterval(interval);
+        broadcast('vortexEnd', {});
+        return;
+      }
+      for (const [id, p] of players) {
+        if (id !== casterId && Math.hypot(p.x - x, p.z - z) < 6) {
+          applyDamage(id, 6, { ax: x, az: z, kb: 5, attackerId: casterId, weapon: 'чёрного вихря' });
+        }
+      }
+    }, 1000);
+  },
+  // Световая клетка
+  lightCage: (casterId, targetId) => {
+    broadcast('cageSpawn', { casterId, targetId });
+    const endTime = Date.now() + 6000;
+    const interval = setInterval(() => {
+      if (Date.now() > endTime) {
+        clearInterval(interval);
+        broadcast('cageEnd', { targetId });
+        return;
+      }
+      applyDamage(targetId, 4, { ax: 0, az: 0, kb: 0, attackerId: casterId, weapon: 'световой клетки' });
+    }, 1000);
+  },
+  // Теневые оковы
+  shadowShackles: (casterId, targetId) => {
+    const target = players.get(targetId);
+    if (target) {
+      target.effects.set('shadow_shackles', { until: Date.now() + 6000, power: 1 });
+      syncEffects(target);
+      broadcast('shacklesFx', { targetId });
+    }
+  },
+  // Дыхание дракона
+  dragonBreath: (casterId, origin, dir, yaw, coneAngle = Math.PI/3, maxDist = 8, damage = 8, knockback = 10) => {
+    for (const [id, p] of players) {
+      if (id === casterId) continue;
+      const toTarget = { x: p.x - origin.x, z: p.z - origin.z };
+      const dist = Math.hypot(toTarget.x, toTarget.z);
+      if (dist > maxDist) continue;
+      const forward = { x: Math.sin(yaw), z: Math.cos(yaw) };
+      const dot = (toTarget.x * forward.x + toTarget.z * forward.z) / dist;
+      if (dot >= Math.cos(coneAngle)) {
+        applyDamage(id, damage, { ax: origin.x, az: origin.z, kb: knockback, attackerId: casterId, weapon: 'дыхания дракона' });
+        players.get(id)?.effects.set('burning', { until: Date.now() + 4000, power: 1 });
+        players.get(id)?.effects.set('freeze', { until: Date.now() + 2000, power: 1 });
+        players.get(id)?.effects.set('weakness', { until: Date.now() + 5000, power: 0.7 });
+        syncEffects(players.get(id));
+        broadcast('dragonBreathFx', { from: origin, to: p });
+      }
+    }
+    broadcast('dragonBreathCone', { origin, dir, yaw });
+  },
+  addTotem,
 };
+
 const magic = createMagicEngine(magicCtx);
 
+// ========== Тик (20 TPS) ==========
 const TICK = 50;
 let lastManaSync = 0;
 setInterval(() => {
   const now = Date.now(), dt = TICK / 1000;
   for (const [id, q] of players) {
     let changed = false;
+    // Удаление истёкших эффектов
     for (const [e, v] of q.effects) if (now > v.until) { q.effects.delete(e); changed = true; }
+    
+    // Регенерация
     const regen = q.effects.get('regen');
     if (regen && now >= (regen.lastTick + 1000)) {
       regen.lastTick = now;
@@ -325,15 +552,18 @@ setInterval(() => {
         broadcast('hp', { id, hp: q.hp });
       }
     }
+    // Огненная аура
     const aura = q.effects.get('fire_aura');
     if (aura) {
       if (!q.lastAuraTick) q.lastAuraTick = 0;
       if (now - q.lastAuraTick >= 1000) {
         q.lastAuraTick = now;
+        const rad = aura.radius || 3;
+        const dmg = aura.power;
         for (const [pid, p] of players) {
           if (pid === id) continue;
-          if (Math.hypot(q.x - p.x, q.z - p.z) < 3) {
-            applyDamage(pid, aura.power, { attackerId: id, weapon: 'огненной ауры', kb: 0 });
+          if (Math.hypot(q.x - p.x, q.z - p.z) < rad) {
+            applyDamage(pid, dmg, { attackerId: id, weapon: 'огненной ауры', kb: 0 });
             if (!p.effects.has('burning')) {
               p.effects.set('burning', { until: now + 3000, power: 1 });
               syncEffects(p);
@@ -342,14 +572,18 @@ setInterval(() => {
         }
       }
     }
+    // Горение
     const burn = q.effects.get('burning');
     if (burn) {
       q.burnAcc = (q.burnAcc || 0) + dt;
       if (q.burnAcc >= 1) { q.burnAcc -= 1; applyDamage(id, burn.power, { kb: 0 }); }
     }
+    
     if (changed) syncEffects(q);
     q.mana = Math.min(20, q.mana + dt);
   }
+  
+  // Зоны левитации
   for (const [zoneId, zone] of activeZones) {
     if (now > zone.until) { activeZones.delete(zoneId); broadcast('zoneEnd', { id: zoneId }); continue; }
     if (zone.effect === 'levitate_circle') {
@@ -361,6 +595,22 @@ setInterval(() => {
       }
     }
   }
+  
+  // Зоны замедления времени (Вечный лёд разума)
+  for (const [zoneId, zone] of timeSlowZones) {
+    if (now > zone.endTime) { timeSlowZones.delete(zoneId); continue; }
+    for (const [pid, p] of players) {
+      if (pid === zone.casterId) continue;
+      if (Math.hypot(p.x - zone.x, p.z - zone.z) < zone.radius) {
+        if (!p.effects.has('time_slow')) {
+          p.effects.set('time_slow', { until: now + 500, power: 0.5 });
+          syncEffects(p);
+        }
+      }
+    }
+  }
+  
+  // Синхронизация маны
   if (now - lastManaSync > 1000) {
     lastManaSync = now;
     for (const q of players.values()) send(q.ws, 'mana', { mana: Math.floor(q.mana) });
@@ -368,6 +618,7 @@ setInterval(() => {
   magic.tick(dt);
 }, TICK);
 
+// ========== WebSocket ==========
 wss.on('connection', (ws) => {
   const id = nextId++;
   const nickname = randomNickname();
@@ -375,6 +626,7 @@ wss.on('connection', (ws) => {
     id, ws, nickname,
     x: 0.5, y: 80, z: 0.5, yaw: 0,
     hp: 20, armor: 0, mana: 20, lastAttack: 0, effects: new Map(),
+    phoenixUsed: false,
   });
   console.log(`+ ${nickname} (id ${id}) · всего: ${players.size}`);
   send(ws, 'init', {
@@ -383,6 +635,7 @@ wss.on('connection', (ws) => {
     players: [...players].filter(([pid]) => pid !== id)
       .map(([pid, q]) => ({ id: pid, nickname: q.nickname, x: q.x, y: q.y, z: q.z, yaw: q.yaw })),
     zones: [...activeZones].map(([zid, z]) => ({ id: zid, x: z.x, z: z.z, radius: z.radius, effect: z.effect })),
+    timeSlowZones: [...timeSlowZones].map(([zid, z]) => ({ id: zid, x: z.x, z: z.z, radius: z.radius, duration: (z.endTime - Date.now())/1000 })),
   });
   broadcast('join', { id, nickname }, id);
 
@@ -403,7 +656,8 @@ wss.on('connection', (ws) => {
       if (!t || now - q.lastAttack < 400) return;
       if ((q.x - t.x) ** 2 + (q.y - t.y) ** 2 + (q.z - t.z) ** 2 > 36) return;
       q.lastAttack = now;
-      if (q.effects.has('chain_lightning') && Math.random() < 0.2) {
+      // Разряд (chain lightning)
+      if (q.effects.has('chain_lightning') && Math.random() < (q.effects.get('chain_lightning').power || 0.2)) {
         applyDamage(msg.target, 6, { ax: q.x, az: q.z, kb: 5, attackerId: id, weapon: 'разряда' });
         const candidates = [...players.values()].filter(p => p.id !== id && p.id !== msg.target && Math.hypot(p.x - t.x, p.z - t.z) < 5);
         if (candidates.length) {

@@ -1,13 +1,13 @@
-// Общий движок заклинаний: работает и в Node (сервер), и в браузере (оффлайн).
+// magic.js – полный движок заклинаний с новыми способностями
 export const SPELL_ELEMENTS = ['fire','water','air','earth','beam','ice','shield','light','dark'];
-// Убираем конфликт light-dark, оставляем только fire-water и fire-ice
-export const CONFLICTS = [['fire','water'],['fire','ice']];
+export const CONFLICTS = [['fire','water'],['fire','ice'],['light','dark']];
 export const MANA_PER_ELEMENT = 1, CAST_COOLDOWN = 500;
 
 export function createMagicEngine(ctx) {
   const projectiles = new Map(), mines = new Map(), lastCast = new Map();
   let nextProj = 1, nextMine = 1;
 
+  // ========== Утилиты ==========
   const dominant = (els, n) => {
     let best = 'beam', bc = 0;
     for (const e of els) {
@@ -25,8 +25,9 @@ export function createMagicEngine(ctx) {
     return true;
   }
 
-  function explode(x, y, z, radius, dmg, ownerId) {
-    radius = Math.min(radius, 4.5);
+  // ========== Взрыв (для снарядов и мин) ==========
+  function explode(x, y, z, radius, dmg, ownerId, extraEffect = null) {
+    radius = Math.min(radius, 5.5);
     ctx.emit('explosion', { x, y, z, r: radius });
     const r = Math.ceil(radius);
     for (let bx = Math.floor(x - r); bx <= Math.floor(x + r); bx++)
@@ -40,22 +41,215 @@ export function createMagicEngine(ctx) {
     for (const [id, p] of ctx.getPlayers()) {
       if (id === ownerId) continue;
       const d2 = (p.x - x) ** 2 + (p.y + 0.9 - y) ** 2 + (p.z - z) ** 2;
-      if (d2 < rr * rr)
-        ctx.applyDamage(id, dmg * (1 - Math.sqrt(d2) / rr), {
+      if (d2 < rr * rr) {
+        const dmgActual = dmg * (1 - Math.sqrt(d2) / rr);
+        ctx.applyDamage(id, dmgActual, {
           ax: x, az: z, kb: 8 + radius * 2,
           attackerId: ownerId,
           weapon: 'магии'
         });
+        if (extraEffect) extraEffect(id);
+      }
     }
   }
 
-  function applyElementEffects(targetId, n, attackerId) {
-    if (n('fire')) ctx.addEffect(targetId, 'burning', 3, n('fire'));
-    if (n('ice'))  ctx.addEffect(targetId, n('ice') >= 3 ? 'freeze' : 'slow',
-                                 n('ice') >= 3 ? 1.5 : 4, n('ice'));
-    if (n('dark')) ctx.addEffect(targetId, 'curse', 6 + 2 * n('dark'), n('dark'));
+  // Применение дебаффов (для хаотического взрыва)
+  function applyRandomDebuffs(targetId) {
+    const debuffs = ['burning','freeze','blind','weakness','vulnerability'];
+    const selected = [];
+    while (selected.length < 5 && debuffs.length) {
+      const idx = Math.floor(Math.random() * debuffs.length);
+      if (!selected.includes(debuffs[idx])) selected.push(debuffs[idx]);
+    }
+    for (const d of selected) {
+      if (d === 'burning') ctx.addEffect(targetId, 'burning', 6, 2);
+      else if (d === 'freeze') ctx.addEffect(targetId, 'freeze', 3, 1);
+      else if (d === 'blind') ctx.addEffect(targetId, 'blind', 5, 1);
+      else if (d === 'weakness') ctx.addEffect(targetId, 'weakness', 8, 0.5); // урон -50%
+      else if (d === 'vulnerability') ctx.addEffect(targetId, 'vulnerability', 8, 1.5); // получает +50% урона
+    }
   }
 
+  // ========== Специфические заклинания ==========
+  // Сфера абсолютной защиты
+  function createProtectionSphere(casterId, x, y, z, duration = 8) {
+    ctx.emit('sphereSpawn', { casterId, x, y, z, radius: 3, duration });
+    const sphereId = Math.random();
+    const endTime = Date.now() + duration * 1000;
+    const interval = setInterval(() => {
+      if (Date.now() > endTime) {
+        clearInterval(interval);
+        ctx.emit('sphereEnd', { casterId });
+        return;
+      }
+      // Лечение всех внутри сферы (включая создателя)
+      for (const [id, p] of ctx.getPlayers()) {
+        if (Math.hypot(p.x - x, p.z - z) < 3 && p.y > y - 1 && p.y < y + 2) {
+          ctx.healPlayer(id, 2);
+        }
+      }
+    }, 1000);
+    // Отражаем 50% урона (делаем через специальный флаг, который проверим в applyDamage на сервере)
+    ctx.emit('sphereActive', { casterId, reflect: 0.5 });
+  }
+
+  // Астероид
+  function summonAsteroid(casterId, targetX, targetZ, yaw) {
+    const impactX = targetX + Math.sin(yaw) * 3;
+    const impactZ = targetZ + Math.cos(yaw) * 3;
+    const startY = 60;
+    ctx.emit('asteroidStart', { casterId, x: impactX, z: impactZ, startY });
+    // Через 1.5 секунды удар
+    setTimeout(() => {
+      const radius = 5;
+      const dmg = 18;
+      explode(impactX, 0, impactZ, radius, dmg, casterId, (id) => {
+        ctx.addEffect(id, 'disorient', 6, 1); // дезориентация (перевернутый экран)
+      });
+      // Создание воронки из камня
+      for (let dx = -radius; dx <= radius; dx++) {
+        for (let dz = -radius; dz <= radius; dz++) {
+          const dist = Math.hypot(dx, dz);
+          if (dist < radius) {
+            const bx = Math.floor(impactX + dx);
+            const bz = Math.floor(impactZ + dz);
+            const y = ctx.terrainHeight(bx, bz);
+            for (let h = 0; h < Math.max(1, radius - Math.floor(dist)); h++) {
+              ctx.setBlock(bx, y + h, bz, 3); // камень
+            }
+          }
+        }
+      }
+      ctx.emit('asteroidImpact', { x: impactX, z: impactZ, radius });
+    }, 1500);
+  }
+
+  // Вечный лёд разума (сфера замедления времени)
+  let timeSlowZones = new Map();
+  function createTimeSlowZone(casterId, x, z, radius = 5, duration = 15) {
+    const zoneId = Math.random();
+    timeSlowZones.set(zoneId, { x, z, radius, endTime: Date.now() + duration * 1000, casterId });
+    ctx.emit('timeSlowZone', { zoneId, x, z, radius, duration });
+    setTimeout(() => timeSlowZones.delete(zoneId), duration * 1000);
+    // Эффект замедления: в tick будет применяться к игрокам и снарядам
+  }
+
+  // Феникс-возрождение (пассивный эффект, активируется при HP < 4)
+  // Реализуется через отдельную проверку на сервере, здесь только установка баффа
+  function applyPhoenix(casterId) {
+    ctx.addEffect(casterId, 'phoenix', 120, 1); // длится 2 минуты, но срабатывает один раз
+    // При срабатывании сервер вызовет эффект
+  }
+
+  // Громокаменный топот
+  function stomp(casterId, x, z, yaw) {
+    const radius = 4;
+    ctx.emit('stompFx', { x, z, radius });
+    for (const [id, p] of ctx.getPlayers()) {
+      if (id === casterId) continue;
+      const dist = Math.hypot(p.x - x, p.z - z);
+      if (dist < radius) {
+        // подбрасывание вверх
+        ctx.teleportPlayer(id, p.x, p.y + 3, p.z);
+        ctx.applyDamage(id, 8, { ax: x, az: z, kb: 12, attackerId: casterId, weapon: 'топота' });
+        ctx.addEffect(id, 'disarm', 5, 1); // разрядка оружия
+      }
+    }
+  }
+
+  // Чёрный вихрь
+  function blackVortex(casterId, x, z, yaw) {
+    const vortexId = Math.random();
+    const duration = 8;
+    ctx.emit('vortexSpawn', { vortexId, x, z, radius: 4, duration });
+    // Затягивание предметов и стрел – абстрактно, но можно собирать снаряды в точке
+    const endTime = Date.now() + duration * 1000;
+    const interval = setInterval(() => {
+      if (Date.now() > endTime) {
+        clearInterval(interval);
+        ctx.emit('vortexEnd', { vortexId });
+        return;
+      }
+      // Выпускаем во врагов накопленные снаряды (упрощённо – просто урон в радиусе)
+      for (const [id, p] of ctx.getPlayers()) {
+        if (id !== casterId && Math.hypot(p.x - x, p.z - z) < 6) {
+          ctx.applyDamage(id, 6, { ax: x, az: z, kb: 5, attackerId: casterId, weapon: 'чёрного вихря' });
+        }
+      }
+    }, 1000);
+  }
+
+  // Световая клетка
+  function lightCage(casterId, targetId) {
+    ctx.emit('cageSpawn', { casterId, targetId });
+    const duration = 6;
+    const endTime = Date.now() + duration * 1000;
+    const interval = setInterval(() => {
+      if (Date.now() > endTime) {
+        clearInterval(interval);
+        ctx.emit('cageEnd', { targetId });
+        return;
+      }
+      ctx.applyDamage(targetId, 4, { ax: 0, az: 0, kb: 0, attackerId: casterId, weapon: 'световой клетки' });
+    }, 1000);
+  }
+
+  // Теневые оковы
+  function shadowShackles(casterId, targetId) {
+    ctx.addEffect(targetId, 'shadow_shackles', 6, 1);
+    ctx.emit('shacklesFx', { targetId });
+  }
+
+  // ========== Дыхание дракона и тотем (уже были) ==========
+  function dragonBreath(casterId, origin, dir, yaw) {
+    const coneAngle = Math.PI / 3;
+    const maxDist = 8;
+    const damage = 8;
+    const knockback = 10;
+    for (const [id, p] of ctx.getPlayers()) {
+      if (id === casterId) continue;
+      const toTarget = { x: p.x - origin.x, z: p.z - origin.z };
+      const dist = Math.hypot(toTarget.x, toTarget.z);
+      if (dist > maxDist) continue;
+      const forward = { x: Math.sin(yaw), z: Math.cos(yaw) };
+      const dot = (toTarget.x * forward.x + toTarget.z * forward.z) / dist;
+      if (dot >= Math.cos(coneAngle)) {
+        ctx.applyDamage(id, damage, { ax: origin.x, az: origin.z, kb: knockback, attackerId: casterId, weapon: 'дыхания дракона' });
+        ctx.addEffect(id, 'burning', 4, 1);
+        ctx.addEffect(id, 'freeze', 2, 1);
+        ctx.addEffect(id, 'weakness', 5, 0.7);
+        ctx.emit('dragonBreathFx', { from: origin, to: p });
+      }
+    }
+    ctx.emit('dragonBreathCone', { origin, dir, yaw });
+  }
+
+  function spawnTotem(casterId, x, z, duration = 30, radius = 5) {
+    const id = Math.random();
+    ctx.emit('totemSpawn', { id, x, z, radius, duration });
+    let lastTick = Date.now();
+    const interval = setInterval(() => {
+      const now = Date.now();
+      if (now - lastTick >= 3000) {
+        lastTick = now;
+        const playersInRange = [...ctx.getPlayers()].filter(([pid, p]) => pid !== casterId && Math.hypot(p.x - x, p.z - z) < radius);
+        if (playersInRange.length) {
+          const randomTarget = playersInRange[Math.floor(Math.random() * playersInRange.length)];
+          const targetId = randomTarget[0];
+          ctx.addEffect(targetId, 'speed', 5, 1.5);
+          ctx.emit('totemCharge', { targetId, casterId });
+          // зарядка оружия: следующий урон +6
+          ctx.emit('totemPower', { targetId, power: 6 });
+        }
+      }
+    }, 3000);
+    setTimeout(() => {
+      clearInterval(interval);
+      ctx.emit('totemEnd', { id });
+    }, duration * 1000);
+  }
+
+  // ========== Основной cast ==========
   function cast(casterId, els, dirArr, origin, yaw) {
     if (!validate(els)) return;
     const now = Date.now();
@@ -72,210 +266,218 @@ export function createMagicEngine(ctx) {
     dx /= dl; dy /= dl; dz /= dl;
     const ox = origin.x, oy = origin.y, oz = origin.z;
 
-    // ========== НОВЫЕ КОМБИНАЦИИ ==========
-    // Прыгучесть (air + earth) – базовый вариант
-    if (n('air') === 1 && n('earth') === 1) {
-      ctx.addEffect(casterId, 'jump_boost', 75, 1.3);
-      return;
-    }
-    // Усиленная прыгучесть (air + air + earth)
-    if (n('air') === 2 && n('earth') === 1) {
-      ctx.addEffect(casterId, 'jump_boost', 120, 2);
-      return;
-    }
-
-    // Регенерация (water + light) – базовый
-    if (n('water') === 1 && n('light') === 1) {
-      ctx.addEffect(casterId, 'regen', 50, 1);
-      return;
-    }
-    // Усиленная регенерация (water + light + light)
-    if (n('water') === 1 && n('light') === 2) {
-      ctx.addEffect(casterId, 'regen', 80, 2);
-      return;
-    }
-
-    // Огнеупорность (fire + earth) – базовый
-    if (n('fire') === 1 && n('earth') === 1) {
-      ctx.addEffect(casterId, 'fire_resist', 100, 1);
-      return;
-    }
-    // Усиленная огнеупорность (fire + earth + shield)
-    if (n('fire') === 1 && n('earth') === 1 && n('shield') === 1) {
-      ctx.addEffect(casterId, 'fire_resist', 150, 2);
+    // ---------- НОВЫЕ МОЩНЫЕ ЗАКЛИНАНИЯ (требуют 5 элементов) ----------
+    // Хаотический взрыв (fire+water+air+earth+dark)
+    if (n('fire') === 1 && n('water') === 1 && n('air') === 1 && n('earth') === 1 && n('dark') === 1) {
+      const dir = new THREE.Vector3(dx, dy, dz).normalize();
+      const speed = 30;
+      const projId = nextProj++;
+      const startX = ox + dx, startY = oy + dy, startZ = oz + dz;
+      const vx = dx * speed, vy = dy * speed, vz = dz * speed;
+      const projectile = { id: projId, owner: casterId, kind: 'chaos', x: startX, y: startY, z: startZ, vx, vy, vz, gravity: false, ttl: 3 };
+      projectiles.set(projId, projectile);
+      ctx.emit('projSpawn', { id: projId, kind: 'chaos', x: startX, y: startY, z: startZ, vx, vy, vz, gravity: false, scale: 1.2 });
+      const checkInterval = setInterval(() => {
+        const p = projectiles.get(projId);
+        if (!p) { clearInterval(checkInterval); return; }
+        for (const [id, player] of ctx.getPlayers()) {
+          if (id === casterId) continue;
+          const d2 = (player.x - p.x)**2 + (player.y + 0.9 - p.y)**2 + (player.z - p.z)**2;
+          if (d2 < 1.5) {
+            projectiles.delete(projId);
+            clearInterval(checkInterval);
+            explode(p.x, p.y, p.z, 4, 12, casterId, (target) => applyRandomDebuffs(target));
+            ctx.emit('projEnd', { id: projId, x: p.x, y: p.y, z: p.z });
+            return;
+          }
+        }
+      }, 50);
       return;
     }
 
-    // Огненная аура (fire + fire + air) – базовый урон 1
-    if (n('fire') === 2 && n('air') === 1) {
-      ctx.addEffect(casterId, 'fire_aura', 60, 1);
-      return;
-    }
-    // Усиленная огненная аура (fire + fire + air + air) – урон 2
-    if (n('fire') === 2 && n('air') === 2) {
-      ctx.addEffect(casterId, 'fire_aura', 90, 2);
-      return;
-    }
-    // Максимальная аура (fire + fire + fire + air + air) – урон 3
-    if (n('fire') === 3 && n('air') === 2) {
-      ctx.addEffect(casterId, 'fire_aura', 120, 3);
+    // Сфера абсолютной защиты (shield+earth+air+water+light)
+    if (n('shield') === 1 && n('earth') === 1 && n('air') === 1 && n('water') === 1 && n('light') === 1) {
+      createProtectionSphere(casterId, ox, oy - 1, oz, 8);
       return;
     }
 
-    // Ледяная кожа (ice + earth) – базовый
-    if (n('ice') === 1 && n('earth') === 1) {
-      ctx.addEffect(casterId, 'ice_skin', 75, 1);
-      return;
-    }
-    // Усиленная ледяная кожа (ice + earth + earth) – длиннее
-    if (n('ice') === 1 && n('earth') === 2) {
-      ctx.addEffect(casterId, 'ice_skin', 120, 1);
+    // Астероид (fire+earth+dark+beam+air)
+    if (n('fire') === 1 && n('earth') === 1 && n('dark') === 1 && n('beam') === 1 && n('air') === 1) {
+      summonAsteroid(casterId, ox, oz, yaw);
       return;
     }
 
-    // Разряд (beam + fire) – базовый
-    if (n('beam') === 1 && n('fire') === 1) {
-      ctx.addEffect(casterId, 'chain_lightning', 40, 1);
-      return;
-    }
-    // Усиленный разряд (beam + fire + air) – больше шанс?
-    if (n('beam') === 1 && n('fire') === 1 && n('air') === 1) {
-      ctx.addEffect(casterId, 'chain_lightning', 60, 2);
+    // Вечный лёд разума (ice+water+earth+dark+light) – несмотря на dark+light конфликт? Это исключение, разрешим
+    if (n('ice') === 1 && n('water') === 1 && n('earth') === 1 && n('dark') === 1 && n('light') === 1) {
+      createTimeSlowZone(casterId, ox, oz, 5, 15);
       return;
     }
 
-    // Ослепление (light + dark) – базовое
-    if (n('light') === 1 && n('dark') === 1) {
+    // Феникс-возрождение (fire+light+air+earth+shield)
+    if (n('fire') === 1 && n('light') === 1 && n('air') === 1 && n('earth') === 1 && n('shield') === 1) {
+      applyPhoenix(casterId);
+      return;
+    }
+
+    // Громокаменный топот (earth+air+fire+beam+shield) – 5 элементов
+    if (n('earth') === 1 && n('air') === 1 && n('fire') === 1 && n('beam') === 1 && n('shield') === 1) {
+      stomp(casterId, ox, oz, yaw);
+      return;
+    }
+
+    // Чёрный вихрь (dark+air+water+earth+beam)
+    if (n('dark') === 1 && n('air') === 1 && n('water') === 1 && n('earth') === 1 && n('beam') === 1) {
+      blackVortex(casterId, ox, oz, yaw);
+      return;
+    }
+
+    // Световая клетка (light+beam+air+earth+fire) – 5 элементов
+    if (n('light') === 1 && n('beam') === 1 && n('air') === 1 && n('earth') === 1 && n('fire') === 1) {
+      // выбираем ближайшего врага
+      let nearest = null, minDist = Infinity;
       for (const [id, p] of ctx.getPlayers()) {
         if (id === casterId) continue;
         const dist = Math.hypot(p.x - ox, p.z - oz);
-        if (dist < 5) ctx.addEffect(id, 'blind', 15, 1);
+        if (dist < minDist && dist < 8) { minDist = dist; nearest = id; }
       }
+      if (nearest) lightCage(casterId, nearest);
       return;
     }
-    // Усиленное ослепление (light + dark + air) – больший радиус
+
+    // Теневые оковы (dark+ice+earth+air+water) – 5 элементов
+    if (n('dark') === 1 && n('ice') === 1 && n('earth') === 1 && n('air') === 1 && n('water') === 1) {
+      let nearest = null, minDist = Infinity;
+      for (const [id, p] of ctx.getPlayers()) {
+        if (id === casterId) continue;
+        const dist = Math.hypot(p.x - ox, p.z - oz);
+        if (dist < minDist && dist < 6) { minDist = dist; nearest = id; }
+      }
+      if (nearest) shadowShackles(casterId, nearest);
+      return;
+    }
+
+    // Дыхание дракона (5 элементов, ранее добавленное)
+    if (n('fire') === 1 && n('water') === 1 && n('air') === 1 && n('earth') === 1 && n('ice') === 1) {
+      dragonBreath(casterId, { x: ox, z: oz }, { x: dx, z: dz }, yaw);
+      return;
+    }
+
+    // Электрический тотем (earth+beam+air) – 3 элемента
+    if (n('earth') === 1 && n('beam') === 1 && n('air') === 1) {
+      const radius = len === 4 ? 7 : 5;
+      const duration = len === 4 ? 45 : 30;
+      spawnTotem(casterId, ox, oz, duration, radius);
+      return;
+    }
+
+    // ---------- ОСТАЛЬНЫЕ СТАРЫЕ И УСИЛЕННЫЕ ЗАКЛИНАНИЯ ----------
+    // Прыгучесть (air+air+earth) и усиленная
+    if (n('air') >= 2 && n('earth') >= 1 && (n('air') + n('earth')) === 3) {
+      let power = 1.5, dur = 75;
+      if (n('earth') === 2) { power = 1.8; dur = 90; }
+      ctx.addEffect(casterId, 'jump_boost', dur, power);
+      return;
+    }
+    // Регенерация (water+light+light) и усиленная
+    if (n('water') === 1 && n('light') >= 2) {
+      let power = 1, dur = 50;
+      if (n('light') === 3) { power = 2; dur = 60; }
+      ctx.addEffect(casterId, 'regen', dur, power);
+      return;
+    }
+    // Огнеупорность (fire+earth+shield) и усиленная
+    if (n('fire') >= 1 && n('earth') >= 1 && n('shield') === 1 && (n('fire')+n('earth')) === 2) {
+      let resist = 0.5, dur = 100;
+      if (n('fire') === 2) { resist = 0.75; dur = 120; }
+      ctx.addEffect(casterId, 'fire_resist', dur, resist);
+      return;
+    }
+    // Огненная аура (fire+fire+air) и усиленная
+    if (n('fire') >= 2 && n('air') >= 1 && (n('fire')+n('air')) === 3) {
+      let dmg = 1, rad = 3, dur = 60;
+      if (n('air') === 2) { dmg = 2; rad = 4; dur = 70; }
+      ctx.addEffect(casterId, 'fire_aura', dur, { power: dmg, radius: rad });
+      return;
+    }
+    // Ледяная кожа (ice+ice+earth) и усиленная
+    if (n('ice') >= 2 && n('earth') >= 1 && (n('ice')+n('earth')) === 3) {
+      let freezeDur = 2, dur = 75;
+      if (n('earth') === 2) { freezeDur = 3; dur = 90; }
+      ctx.addEffect(casterId, 'ice_skin', dur, freezeDur);
+      return;
+    }
+    // Разряд (beam+fire+air) и усиленная
+    if (n('beam') === 1 && n('fire') >= 1 && n('air') >= 1 && (n('fire')+n('air')) === 2) {
+      let chance = 0.2, dur = 40;
+      if (n('air') === 2) { chance = 0.35; dur = 50; }
+      ctx.addEffect(casterId, 'chain_lightning', dur, chance);
+      return;
+    }
+    // Ослепление (light+dark+air) – разрешённый конфликт
     if (n('light') === 1 && n('dark') === 1 && n('air') === 1) {
+      let rad = 5, dur = 15;
+      if (len === 4) { rad = 7; dur = 20; }
       for (const [id, p] of ctx.getPlayers()) {
         if (id === casterId) continue;
-        const dist = Math.hypot(p.x - ox, p.z - oz);
-        if (dist < 8) ctx.addEffect(id, 'blind', 25, 1);
+        if (Math.hypot(p.x - ox, p.z - oz) < rad) ctx.addEffect(id, 'blind', dur, 1);
       }
       return;
     }
-
-    // Теневой шаг (dark + dark) – базовый
-    if (n('dark') === 2) {
-      ctx.emit('shadowStepRequest', { casterId });
+    // Теневой шаг (dark+dark+air) и усиленная
+    if (n('dark') >= 2 && n('air') >= 1 && (n('dark')+n('air')) === 3) {
+      ctx.emit('shadowStepRequest', { casterId, invisible: n('air') === 2 });
       return;
     }
-    // Усиленный теневой шаг (dark + dark + air) – большая дальность
-    if (n('dark') === 2 && n('air') === 1) {
-      ctx.emit('shadowStepRequest', { casterId, range: 15 });
+    // Невесомость (air+air+light) и усиленная
+    if (n('air') >= 2 && n('light') >= 1 && (n('air')+n('light')) === 3) {
+      ctx.addEffect(casterId, 'weightless', 50, n('light') === 2 ? 2 : 1);
       return;
     }
-
-    // Невесомость (air + light) – базовый
-    if (n('air') === 1 && n('light') === 1) {
-      ctx.addEffect(casterId, 'weightless', 50, 1);
+    // Барьер (shield+earth) и усиленная
+    if (n('shield') === 1 && n('earth') >= 1 && (n('shield')+n('earth')) === 2) {
+      let power = 4, dur = 75;
+      if (n('earth') === 2) { power = 7; dur = 90; }
+      ctx.addEffect(casterId, 'ward', dur, { power });
       return;
     }
-    // Усиленная невесомость (air + air + light) – дольше
-    if (n('air') === 2 && n('light') === 1) {
-      ctx.addEffect(casterId, 'weightless', 80, 1);
-      return;
-    }
-
-    // Барьер (shield) – базовый (3 единицы)
-    if (n('shield') === 1) {
-      ctx.addEffect(casterId, 'ward', 75, { power: 3 });
-      return;
-    }
-    // Усиленный барьер (shield + earth) – 5 единиц
-    if (n('shield') === 1 && n('earth') === 1) {
-      ctx.addEffect(casterId, 'ward', 100, { power: 5 });
-      return;
-    }
-
-    // Цепочка послушания (dark + beam) – базовый
-    if (n('dark') === 1 && n('beam') === 1) {
-      let nearest = null, minDist = Infinity;
-      for (const [id, p] of ctx.getPlayers()) {
-        if (id === casterId) continue;
-        const dist = Math.hypot(p.x - ox, p.z - oz);
-        if (dist < minDist && dist < 8) { minDist = dist; nearest = id; }
-      }
-      if (nearest) {
-        ctx.chainPlayers(casterId, nearest);
-        ctx.emit('systemMessage', { message: `Цепочка послушания связала вас с игроком ${nearest}` });
-      }
-      return;
-    }
-    // Усиленная цепочка (dark + beam + fire) – связывает и наносит дополнительный урон при связи
+    // Цепочка послушания (dark+beam+fire) и усиленная
     if (n('dark') === 1 && n('beam') === 1 && n('fire') === 1) {
-      let nearest = null, minDist = Infinity;
-      for (const [id, p] of ctx.getPlayers()) {
-        if (id === casterId) continue;
-        const dist = Math.hypot(p.x - ox, p.z - oz);
-        if (dist < minDist && dist < 12) { minDist = dist; nearest = id; }
-      }
-      if (nearest) {
-        ctx.chainPlayers(casterId, nearest);
-        ctx.applyDamage(nearest, 4, { attackerId: casterId, weapon: 'цепочки послушания' });
-        ctx.emit('systemMessage', { message: `Цепочка послушания связала вас с игроком ${nearest} и нанесла урон` });
-      }
-      return;
-    }
-
-    // Массовый левитирующий круг (air + water) – базовый радиус 3
-    if (n('air') === 1 && n('water') === 1) {
-      ctx.addZone(ox, oz, 3, 'levitate_circle', casterId, 40);
-      ctx.emit('systemMessage', { message: 'Вы создали левитирующий круг!' });
-      return;
-    }
-    // Усиленный круг (air + air + water + earth) – радиус 5
-    if (n('air') === 2 && n('water') === 1 && n('earth') === 1) {
-      ctx.addZone(ox, oz, 5, 'levitate_circle', casterId, 60);
-      ctx.emit('systemMessage', { message: 'Вы создали усиленный левитирующий круг!' });
-      return;
-    }
-
-    // Обмен местами (dark + air) – базовый радиус 8
-    if (n('dark') === 1 && n('air') === 1) {
+      let transfer = 0.5;
+      if (len === 4) transfer = 0.75;
       let nearest = null, minDist = Infinity;
       for (const [id, p] of ctx.getPlayers()) {
         if (id === casterId) continue;
         const dist = Math.hypot(p.x - ox, p.z - oz);
         if (dist < minDist && dist < 8) { minDist = dist; nearest = id; }
       }
-      if (nearest) {
-        ctx.swapPositions(casterId, nearest);
-        ctx.emit('systemMessage', { message: 'Вы обменялись местами!' });
-      }
+      if (nearest) ctx.chainPlayers(casterId, nearest, transfer);
       return;
     }
-    // Усиленный обмен (dark + air + earth) – радиус 12
+    // Массовый левитирующий круг (air+air+water+earth) и усиленная
+    if (n('air') === 2 && n('water') === 1 && n('earth') === 1) {
+      let rad = 4, dur = 40;
+      if (len === 5) { rad = 6; dur = 50; }
+      ctx.addZone(ox, oz, rad, 'levitate_circle', casterId, dur);
+      return;
+    }
+    // Обмен местами (dark+air+earth) и усиленная
     if (n('dark') === 1 && n('air') === 1 && n('earth') === 1) {
+      let slow = false;
+      if (len === 4) slow = true;
       let nearest = null, minDist = Infinity;
       for (const [id, p] of ctx.getPlayers()) {
         if (id === casterId) continue;
         const dist = Math.hypot(p.x - ox, p.z - oz);
-        if (dist < minDist && dist < 12) { minDist = dist; nearest = id; }
+        if (dist < minDist && dist < 10) { minDist = dist; nearest = id; }
       }
       if (nearest) {
         ctx.swapPositions(casterId, nearest);
-        ctx.emit('systemMessage', { message: 'Вы обменялись местами на большом расстоянии!' });
+        if (slow) ctx.addEffect(nearest, 'slow', 3, 1);
       }
       return;
     }
 
-    // Дополнительные комбинации: ускорение (air + air) – базовое, уже есть в старом коде
-    // Но добавим усиленное ускорение (air + air + light)
-    if (n('air') === 2 && n('light') === 1) {
-      ctx.addEffect(casterId, 'speed', 20, 2.5);
-      return;
-    }
-
-    // === СТАРЫЕ ЗАКЛИНАНИЯ (без изменений) ===
+    // ---------- СТАРЫЕ ЗАКЛИНАНИЯ (shield, телепорт, метеор и т.д.) ----------
     if (n('shield')) {
       if (n('dark'))  return placeMine(casterId, ox, oy - 1.4, oz, n, len);
       if (n('earth')) return stoneWall(ox, oz, yaw, len);
