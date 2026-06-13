@@ -272,7 +272,7 @@ const EFFECT_NAMES = {
   speed: '💨 Ускорение', levitate: '🕊 Левитация',
   jump_boost: '🚀 Прыгучесть', regen: '💚 Регенерация', fire_resist: '🔥 Огнеупорность',
   fire_aura: '🔥 Огненная аура', ice_skin: '❄ Ледяная кожа', chain_lightning: '⚡ Разряд',
-  blind: '🌫️ Ослепление', shadow_step: '🌑 Теневой шаг', weightless: '🍃 Невесомость',
+  blind: '🌫️ Ослепление', weightless: '🍃 Невесомость',
 };
 function effectActive(name) {
   const e = activeEffects.get(name);
@@ -380,24 +380,12 @@ function updateTransients(dt) {
   }
 }
 
-// ========== Слепота (оверлей) ==========
-let blindnessOverlay = null;
-function setBlindness(active) {
-  if (!blindnessOverlay) {
-    blindnessOverlay = document.createElement('div');
-    blindnessOverlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,200,0.7); pointer-events:none; z-index:1000; display:none;';
-    document.body.appendChild(blindnessOverlay);
-  }
-  blindnessOverlay.style.display = active ? 'block' : 'none';
-}
-
 // ========== Сеть ==========
 const SERVER_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
 let myId = null;
 let myNickname = '';
-const remotePlayers = new Map();
+const remotePlayers = new Map(); // id -> { group, target, yaw, nickname, lastPos, phase }
 
-// Функция создания модели игрока с доступом к конечностям
 function createPlayerModel(color) {
   const group = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.1 });
@@ -481,17 +469,16 @@ function addRemotePlayer(id, p) {
   const group = createPlayerModel(color);
   group.position.set(p.x, p.y, p.z);
   scene.add(group);
-  remotePlayers.set(id, { 
-    group, 
-    target: new THREE.Vector3(p.x, p.y, p.z), 
-    yaw: p.yaw || 0, 
+  remotePlayers.set(id, {
+    group,
+    target: new THREE.Vector3(p.x, p.y, p.z),
+    yaw: p.yaw || 0,
     nickname: p.nickname || `Player ${id}`,
     lastPos: new THREE.Vector3(p.x, p.y, p.z),
-    phase: 0
+    phase: 0,
   });
   setStatus(`онлайн · игроков: ${remotePlayers.size}`);
 }
-
 function removeRemotePlayer(id) {
   const rp = remotePlayers.get(id);
   if (!rp) return;
@@ -499,11 +486,9 @@ function removeRemotePlayer(id) {
   remotePlayers.delete(id);
   setStatus(`онлайн · игроков: ${remotePlayers.size}`);
 }
-
 function updateRemotePlayers(dt) {
   const k = 1 - Math.pow(0.0001, dt);
   const tmp = new THREE.Vector3();
-  
   for (const rp of remotePlayers.values()) {
     tmp.set(rp.target.x, rp.target.y, rp.target.z);
     rp.group.position.lerp(tmp, k);
@@ -515,18 +500,12 @@ function updateRemotePlayers(dt) {
     const animSpeed = 12.0;
     const armAmp = 0.8;
     const legAmp = 0.5;
-    
-    if (speed > 0.01) {
-      rp.phase += speed * animSpeed;
-    } else {
-      rp.phase *= 0.95;
-    }
-    
+    if (speed > 0.01) rp.phase += speed * animSpeed;
+    else rp.phase *= 0.95;
     const leftArm = rp.group.userData.leftArm;
     const rightArm = rp.group.userData.rightArm;
     const leftLeg = rp.group.userData.leftLeg;
     const rightLeg = rp.group.userData.rightLeg;
-    
     if (leftArm && rightArm && leftLeg && rightLeg) {
       const angle = Math.sin(rp.phase) * armAmp;
       leftArm.rotation.x = angle;
@@ -535,7 +514,6 @@ function updateRemotePlayers(dt) {
       leftLeg.rotation.x = -legAngle;
       rightLeg.rotation.x = legAngle;
     }
-    
     rp.lastPos.copy(rp.group.position);
   }
 }
@@ -606,25 +584,69 @@ const EVENTS = {
     spawnParticles(m.x0, m.y0, m.z0, 0x9050c0, 20, 3, 0.7);
     spawnParticles(m.x1, m.y1, m.z1, 0x9050c0, 20, 3, 0.7);
   },
+  lightningEffect: (m) => {
+    const from = remotePlayers.get(m.from)?.group.position || player.pos;
+    const to = remotePlayers.get(m.to)?.group.position || player.pos;
+    const points = [from.clone(), to.clone()];
+    const geo = new THREE.BufferGeometry().setFromPoints(points);
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffaa44, linewidth: 2 }));
+    scene.add(line);
+    setTimeout(() => scene.remove(line), 200);
+    spawnParticles(to.x, to.y + 1, to.z, 0xffaa44, 15, 2, 0.5);
+  },
   zoneSpawn: (m) => {
-    // Визуальный круг (опционально)
-    const ringGeo = new THREE.RingGeometry(m.radius-0.2, m.radius+0.2, 32);
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0x88aaff, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+    const ringGeo = new THREE.RingGeometry(m.radius - 0.2, m.radius + 0.2, 32);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0x88ffaa, side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
     const ring = new THREE.Mesh(ringGeo, ringMat);
-    ring.rotation.x = -Math.PI/2;
+    ring.rotation.x = -Math.PI / 2;
     ring.position.set(m.x, 0.1, m.z);
     scene.add(ring);
-    setTimeout(() => scene.remove(ring), 8000);
+    const interval = setInterval(() => {
+      if (!ring.parent) { clearInterval(interval); return; }
+      spawnParticles(m.x + (Math.random() - 0.5) * m.radius, 0.5, m.z + (Math.random() - 0.5) * m.radius, 0xaaffaa, 3, 0.5, 0.3);
+    }, 500);
+    setTimeout(() => { scene.remove(ring); clearInterval(interval); }, 8000);
   },
-  zoneEnd: (m) => {},
+  zoneEnd: () => {},
   chainLink: (m) => {
-    // Визуальная цепь между игроками (простая линия, можно добавить)
+    const p1 = remotePlayers.get(m.id1)?.group;
+    const p2 = remotePlayers.get(m.id2)?.group;
+    if (p1 && p2) {
+      const points = [p1.position.clone(), p2.position.clone()];
+      const geo = new THREE.BufferGeometry().setFromPoints(points);
+      const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xff44ff, linewidth: 2 }));
+      scene.add(line);
+      setTimeout(() => scene.remove(line), 5000);
+    }
   },
   swapFx: (m) => {
-    spawnParticles(player.pos.x, player.pos.y+1, player.pos.z, 0x3366ff, 40, 3, 1);
+    const p1 = remotePlayers.get(m.id1)?.group || player.pos;
+    const p2 = remotePlayers.get(m.id2)?.group || player.pos;
+    if (p1 && p2) {
+      spawnParticles(p1.position.x, p1.position.y + 1, p1.position.z, 0x33aaff, 30, 3, 0.8);
+      spawnParticles(p2.position.x, p2.position.y + 1, p2.position.z, 0x33aaff, 30, 3, 0.8);
+    }
+  },
+  shadowStepFx: (m) => {
+    spawnParticles(m.x0, 1, m.z0, 0x9900ff, 40, 4, 0.7);
+    spawnParticles(m.x1, 1, m.z1, 0x9900ff, 40, 4, 0.7);
   },
 };
 for (const [t, f] of Object.entries(EVENTS)) net.on(t, f);
+
+// Ослепление (оверлей)
+let blindnessOverlay = null;
+function setBlindness(active) {
+  if (!blindnessOverlay) {
+    blindnessOverlay = document.createElement('div');
+    blindnessOverlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,200,0.7); pointer-events:none; z-index:1000; display:none;';
+    document.body.appendChild(blindnessOverlay);
+  }
+  blindnessOverlay.style.display = active ? 'block' : 'none';
+}
+
+// Барьер (визуал)
+let shieldMesh = null;
 
 net.on('init', (m) => {
   myId = m.id;
@@ -660,6 +682,17 @@ net.on('effects', (m) => {
   activeEffects.clear();
   for (const it of m.list) activeEffects.set(it.e, { until: it.until, power: it.power });
   setBlindness(activeEffects.has('blind'));
+  if (activeEffects.has('ward')) {
+    if (!shieldMesh) {
+      const sphereGeo = new THREE.SphereGeometry(0.8, 16, 16);
+      const shieldMat = new THREE.MeshBasicMaterial({ color: 0x44aaff, transparent: true, opacity: 0.3, wireframe: true });
+      shieldMesh = new THREE.Mesh(sphereGeo, shieldMat);
+      shieldMesh.position.set(0, 1, 0);
+      camera.add(shieldMesh);
+    }
+  } else {
+    if (shieldMesh) { camera.remove(shieldMesh); shieldMesh = null; }
+  }
 });
 net.on('damaged', (m) => {
   stats.hp = m.hp; renderStats(); damageFlash();
@@ -675,7 +708,6 @@ net.on('respawn', (m) => {
   if (m.id !== myId) return;
   stats.hp = 20; renderStats();
   activeEffects.clear();
-  setBlindness(false);
   let attempts = 0;
   let foundSpot = false;
   let spawnX = 0, spawnZ = 0, spawnY = 0;
@@ -711,6 +743,10 @@ net.on('disconnect', () => {
 net.on('systemMessage', (msg) => {
   addChatMessage('Система', msg.message);
 });
+net.on('chat', (msg) => {
+  const senderName = msg.senderId === myId ? 'You' : (msg.senderNick || `Player ${msg.senderId}`);
+  addChatMessage(senderName, msg.message);
+});
 
 // ========== Чат и координаты ==========
 const coordDisplay = document.getElementById('coord-display');
@@ -737,7 +773,6 @@ function suicide() {
   damageFlash();
   stats.hp = 20;
   activeEffects.clear();
-  setBlindness(false);
   renderStats();
   let attempts = 0;
   let foundSpot = false;
@@ -768,11 +803,6 @@ function suicide() {
   addChatMessage('Система', 'Вы совершили самоубийство');
 }
 
-net.on('chat', (msg) => {
-  const senderName = msg.senderId === myId ? 'You' : (msg.senderNick || `Player ${msg.senderId}`);
-  addChatMessage(senderName, msg.message);
-});
-
 chatInput.addEventListener('focus', () => {
   chatFocused = true;
   keys.clear();
@@ -785,7 +815,6 @@ chatInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter' && chatInput.value.trim()) {
     let message = chatInput.value.trim();
     if (message.startsWith('/')) {
-      // Команды
       if (message === '/kill') {
         suicide();
       } else if (message === '/fly') {
@@ -795,17 +824,6 @@ chatInput.addEventListener('keypress', (e) => {
       } else if (message === '/shadowstep') {
         net.send('shadow_step', {});
         addChatMessage('Система', 'Теневой шаг активирован');
-      } else if (message.startsWith('/swap ')) {
-        const targetNick = message.slice(6);
-        let targetId = null;
-        for (const [id, rp] of remotePlayers) {
-          if (rp.nickname === targetNick) { targetId = id; break; }
-        }
-        if (targetId) {
-          net.send('swap_positions', { target: targetId });
-        } else {
-          addChatMessage('Система', `Игрок ${targetNick} не найден`);
-        }
       } else {
         addChatMessage('Система', `Неизвестная команда: ${message}`);
       }
@@ -856,7 +874,7 @@ function makeLocalCtx() {
       if (effectActive('curse')) return;
       stats.hp = Math.min(20, stats.hp + a); renderStats();
     },
-    clearDebuffs: () => { for (const b of ['burning', 'slow', 'freeze', 'curse', 'blind']) activeEffects.delete(b); setBlindness(false); },
+    clearDebuffs: () => { for (const b of ['burning', 'slow', 'freeze', 'curse','blind']) activeEffects.delete(b); },
     getMana: () => stats.mana,
     spendMana: (id, c) => { stats.mana -= c; renderStats(); },
     teleportPlayer: (id, x, y, z) => { player.pos.set(x, y, z); player.vel.set(0, 0, 0); },
@@ -1083,16 +1101,19 @@ function updatePlayer(dt) {
     moveAxis(dt, 'y');
     moveAxis(dt, 'x');
     moveAxis(dt, 'z');
-    
-    // Невесомость – двойной прыжок
-    if (effectActive('weightless')) {
-      if (!player.flying && !player.onGround && player.vel.y < 0) player.vel.y *= 0.98;
-      if (keys.has('Space') && !player.onGround && !player.doubleJumpUsed) {
-        player.vel.y = 6;
-        player.doubleJumpUsed = true;
-      }
-      if (player.onGround) player.doubleJumpUsed = false;
+  }
+
+  // Невесомость (двойной прыжок, медленное падение)
+  if (effectActive('weightless')) {
+    if (!player.flying && !player.onGround && player.vel.y < 0) player.vel.y *= 0.98;
+    if (keys.has('Space') && !player.onGround && !player.doubleJumpUsed) {
+      player.vel.y = 6;
+      player.doubleJumpUsed = true;
+      spawnParticles(player.pos.x, player.pos.y, player.pos.z, 0x88ff88, 10, 1, 0.5);
     }
+    if (player.onGround) player.doubleJumpUsed = false;
+  } else {
+    player.doubleJumpUsed = false;
   }
 
   if (player.pos.y < -30) {
@@ -1355,15 +1376,6 @@ function animate(now) {
       if (burn) {
         burnAcc += dt;
         if (burnAcc >= 1) { burnAcc -= 1; stats.hp -= burn.power; renderStats(); damageFlash(); }
-      }
-      // Регенерация в оффлайне
-      const regen = effectActive('regen');
-      if (regen && !effectActive('curse')) {
-        if (Math.floor(Date.now() / 1000) > (regen.lastRegenTick || 0)) {
-          regen.lastRegenTick = Math.floor(Date.now() / 1000);
-          stats.hp = Math.min(20, stats.hp + regen.power);
-          renderStats();
-        }
       }
       renderStats();
     }

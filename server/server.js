@@ -143,7 +143,7 @@ function generateBigTree(editsMap, cx, cz, groundY) {
 
 seed = Math.floor(Math.random() * 10000);
 const edits = new Map();
-const players = new Map(); // id -> { ws, x, y, z, yaw, hp, armor, mana, lastAttack, effects, nickname, chainLink? }
+const players = new Map(); // id -> { ws, x, y, z, yaw, hp, armor, mana, lastAttack, effects, nickname, chainLink?, lastAuraTick }
 let nextId = 1;
 
 // Предварительная генерация деревьев
@@ -179,10 +179,7 @@ function applyDamage(targetId, dmg, src = {}) {
   const attackerId = src.attackerId;
   let weapon = src.weapon || 'неизвестного оружия';
   
-  // Огнеупорность: уменьшаем урон от огня
-  if (weapon.includes('огн') && target.effects.has('fire_resist')) {
-    dmg *= 0.5;
-  }
+  if (weapon.includes('огн') && target.effects.has('fire_resist')) dmg *= 0.5;
   
   const ward = target.effects.get('ward');
   if (ward && dmg > 0) {
@@ -195,7 +192,6 @@ function applyDamage(targetId, dmg, src = {}) {
   dmg *= 1 - 0.04 * (target.armor + bonus);
   if (dmg <= 0 && !(src.kb > 0)) return;
   
-  // Ледяная кожа: замедляем атакующего
   if (target.effects.has('ice_skin') && attackerId && attackerId !== targetId) {
     const attacker = players.get(attackerId);
     if (attacker && !attacker.effects.has('freeze')) {
@@ -204,7 +200,6 @@ function applyDamage(targetId, dmg, src = {}) {
     }
   }
   
-  // Цепочка послушания: если цель связана, передаём урон союзнику
   if (target.chainLink && players.has(target.chainLink)) {
     const linked = players.get(target.chainLink);
     if (linked && linked !== target) {
@@ -236,7 +231,6 @@ function applyDamage(targetId, dmg, src = {}) {
   }
 }
 
-// Зоны эффектов (массовый левитирующий круг)
 const activeZones = new Map(); // zoneId -> { x, z, radius, effect, owner, until }
 
 function addZone(x, z, radius, effect, ownerId, duration) {
@@ -262,6 +256,7 @@ const magicCtx = {
       q.effects.set(type, { until: Date.now() + dur*1000, power: powerValue });
     }
     syncEffects(q);
+    if (type === 'fire_aura') q.lastAuraTick = 0;
   },
   healPlayer(id, amount) {
     const q = players.get(id);
@@ -289,15 +284,13 @@ const magicCtx = {
     broadcast('teleport', { id, x, y, z });
   },
   emit: (type, data) => broadcast(type, data),
-  // Дополнительные функции для новых эффектов
   addZone,
   chainPlayers: (casterId, targetId) => {
     const caster = players.get(casterId);
     const target = players.get(targetId);
     if (!caster || !target) return false;
-    // Удаляем старую связь у обоих
-    if (caster.chainLink) delete players.get(caster.chainLink).chainLink;
-    if (target.chainLink) delete players.get(target.chainLink).chainLink;
+    if (caster.chainLink) delete players.get(caster.chainLink)?.chainLink;
+    if (target.chainLink) delete players.get(target.chainLink)?.chainLink;
     caster.chainLink = targetId;
     target.chainLink = casterId;
     broadcast('chainLink', { id1: casterId, id2: targetId });
@@ -324,7 +317,6 @@ setInterval(() => {
   for (const [id, q] of players) {
     let changed = false;
     for (const [e, v] of q.effects) if (now > v.until) { q.effects.delete(e); changed = true; }
-    // Регенерация
     const regen = q.effects.get('regen');
     if (regen && now >= (regen.lastTick + 1000)) {
       regen.lastTick = now;
@@ -333,22 +325,23 @@ setInterval(() => {
         broadcast('hp', { id, hp: q.hp });
       }
     }
-    // Огненная аура
     const aura = q.effects.get('fire_aura');
     if (aura) {
-      for (const [pid, p] of players) {
-        if (pid === id) continue;
-        const dist = Math.hypot(q.x - p.x, q.z - p.z);
-        if (dist < 3) {
-          applyDamage(pid, aura.power, { attackerId: id, weapon: 'огненной ауры', kb: 0 });
-          if (!p.effects.has('burning')) {
-            p.effects.set('burning', { until: now + 3000, power: 1 });
-            syncEffects(p);
+      if (!q.lastAuraTick) q.lastAuraTick = 0;
+      if (now - q.lastAuraTick >= 1000) {
+        q.lastAuraTick = now;
+        for (const [pid, p] of players) {
+          if (pid === id) continue;
+          if (Math.hypot(q.x - p.x, q.z - p.z) < 3) {
+            applyDamage(pid, aura.power, { attackerId: id, weapon: 'огненной ауры', kb: 0 });
+            if (!p.effects.has('burning')) {
+              p.effects.set('burning', { until: now + 3000, power: 1 });
+              syncEffects(p);
+            }
           }
         }
       }
     }
-    // Обычное горение
     const burn = q.effects.get('burning');
     if (burn) {
       q.burnAcc = (q.burnAcc || 0) + dt;
@@ -357,13 +350,11 @@ setInterval(() => {
     if (changed) syncEffects(q);
     q.mana = Math.min(20, q.mana + dt);
   }
-  // Зоны: массовый левитирующий круг
   for (const [zoneId, zone] of activeZones) {
     if (now > zone.until) { activeZones.delete(zoneId); broadcast('zoneEnd', { id: zoneId }); continue; }
     if (zone.effect === 'levitate_circle') {
       for (const [pid, p] of players) {
-        const dist = Math.hypot(p.x - zone.x, p.z - zone.z);
-        if (dist < zone.radius && !p.effects.has('levitate')) {
+        if (Math.hypot(p.x - zone.x, p.z - zone.z) < zone.radius && !p.effects.has('levitate')) {
           p.effects.set('levitate', { until: now + 500, power: 1 });
           syncEffects(p);
         }
@@ -412,14 +403,15 @@ wss.on('connection', (ws) => {
       if (!t || now - q.lastAttack < 400) return;
       if ((q.x - t.x) ** 2 + (q.y - t.y) ** 2 + (q.z - t.z) ** 2 > 36) return;
       q.lastAttack = now;
-      // Разряд (chain lightning) – 20% шанс дополнительного урона и перескока
       if (q.effects.has('chain_lightning') && Math.random() < 0.2) {
         applyDamage(msg.target, 6, { ax: q.x, az: q.z, kb: 5, attackerId: id, weapon: 'разряда' });
-        // перескок на ближайшего врага
         const candidates = [...players.values()].filter(p => p.id !== id && p.id !== msg.target && Math.hypot(p.x - t.x, p.z - t.z) < 5);
         if (candidates.length) {
           const next = candidates[0];
           applyDamage(next.id, 4, { ax: q.x, az: q.z, kb: 3, attackerId: id, weapon: 'разряда (перескок)' });
+          broadcast('lightningEffect', { from: msg.target, to: next.id });
+        } else {
+          broadcast('lightningEffect', { from: id, to: msg.target });
         }
       }
       applyDamage(msg.target, 4, { ax: q.x, az: q.z, kb: 8, attackerId: id, weapon: 'меча' });
@@ -428,7 +420,6 @@ wss.on('connection', (ws) => {
     } else if (msg.type === 'chat') {
       broadcast('chat', { senderId: id, senderNick: q.nickname, message: msg.message }, id);
     } else if (msg.type === 'shadow_step') {
-      // Теневой шаг – клиент сам запрашивает, находим ближайшего игрока
       let nearest = null, minDist = Infinity;
       for (const [pid, p] of players) {
         if (pid === id) continue;
@@ -440,15 +431,17 @@ wss.on('connection', (ws) => {
         const teleX = nearest.x + dirX * 1.5;
         const teleZ = nearest.z + dirZ * 1.5;
         const teleY = terrainHeight(teleX, teleZ) + 1;
+        const oldX = q.x, oldZ = q.z;
         q.x = teleX; q.y = teleY; q.z = teleZ;
         broadcast('teleport', { id, x: q.x, y: q.y, z: q.z });
+        broadcast('shadowStepFx', { x0: oldX, z0: oldZ, x1: q.x, z1: q.z });
         broadcast('systemMessage', { message: `${q.nickname} использовал Теневой шаг` });
       } else {
         send(q.ws, 'systemMessage', { message: 'Нет цели для теневого шага' });
       }
     } else if (msg.type === 'swap_positions') {
       const target = players.get(msg.target);
-      if (target) {
+      if (target && Math.hypot(q.x - target.x, q.z - target.z) < 10) {
         magicCtx.swapPositions(id, msg.target);
       }
     }
