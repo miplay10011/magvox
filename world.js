@@ -29,36 +29,15 @@ export const BLOCK_COLORS = {
 };
 export const CHUNK_MATERIAL = new THREE.MeshLambertMaterial({ vertexColors: true });
 
-// ---- Битовая упаковка блоков (4 бита на блок, 2 блока в байт) ----
-const BLOCKS_PER_BYTE = 2;
-const BITS_PER_BLOCK = 4;
-const BLOCK_MASK = 0x0F;
-function packIndex(x, y, z) {
-  return (x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE) >> 1;
-}
-function getBlockFromPacked(arr, x, y, z) {
-  const idx = (x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE);
-  const byteIdx = idx >> 1;
-  const shift = (idx & 1) ? 4 : 0;
-  return (arr[byteIdx] >> shift) & BLOCK_MASK;
-}
-function setBlockToPacked(arr, x, y, z, value) {
-  const idx = (x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE);
-  const byteIdx = idx >> 1;
-  const shift = (idx & 1) ? 4 : 0;
-  arr[byteIdx] = (arr[byteIdx] & ~(BLOCK_MASK << shift)) | ((value & BLOCK_MASK) << shift);
-}
-
 export class Chunk {
   constructor(cx, cz) {
     this.cx = cx; this.cz = cz;
-    const totalBlocks = CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT;
-    const packedLength = Math.ceil(totalBlocks / BLOCKS_PER_BYTE);
-    this.packed = new Uint8Array(packedLength);
+    this.blocks = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT);
     this.mesh = null;
   }
-  get(x, y, z) { return getBlockFromPacked(this.packed, x, y, z); }
-  set(x, y, z, t) { setBlockToPacked(this.packed, x, y, z, t); }
+  index(x, y, z) { return x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE; }
+  get(x, y, z) { return this.blocks[this.index(x, y, z)]; }
+  set(x, y, z, t) { this.blocks[this.index(x, y, z)] = t; }
 }
 
 export class World {
@@ -67,12 +46,7 @@ export class World {
     this.noise = new ImprovedNoise();
     this.chunks = new Map();
     this.edits = new Map();
-    // Кэши высот и биомов
-    this.heightCache = new Map();
-    this.biomeCache = new Map();
-    this.cacheLimit = 50000;
   }
-
   key(cx, cz) { return `${cx},${cz}`; }
   getChunk(cx, cz) { return this.chunks.get(this.key(cx, cz)); }
 
@@ -85,20 +59,7 @@ export class World {
     return c.get(lx, wy, lz);
   }
 
-  // Кэшированная высота
   terrainHeight(wx, wz) {
-    const key = `${Math.floor(wx)},${Math.floor(wz)}`;
-    if (this.heightCache.has(key)) return this.heightCache.get(key);
-    const h = this._computeTerrainHeight(wx, wz);
-    if (this.heightCache.size > this.cacheLimit) {
-      const first = this.heightCache.keys().next().value;
-      this.heightCache.delete(first);
-    }
-    this.heightCache.set(key, h);
-    return h;
-  }
-
-  _computeTerrainHeight(wx, wz) {
     const s = this.seed;
     let h = 24;
     h += this.noise.noise(wx / 80 + s, wz / 80 + s, 0)   * 16;
@@ -120,22 +81,12 @@ export class World {
   }
 
   getBiome(wx, wz) {
-    const key = `${Math.floor(wx)},${Math.floor(wz)}`;
-    if (this.biomeCache.has(key)) return this.biomeCache.get(key);
     const val = this.noise.noise(wx * 0.005 + this.seed, wz * 0.005 + this.seed, 300);
-    let biome;
-    if (val < -0.25) biome = 'desert';
-    else if (val > 0.35) biome = 'mountain';
-    else biome = 'forest';
-    if (this.biomeCache.size > this.cacheLimit) {
-      const first = this.biomeCache.keys().next().value;
-      this.biomeCache.delete(first);
-    }
-    this.biomeCache.set(key, biome);
-    return biome;
+    if (val < -0.25) return 'desert';
+    if (val > 0.35) return 'mountain';
+    return 'forest';
   }
 
-  // Генерация чанка (аналогично предыдущему, но с использованием packed)
   generateChunk(cx, cz) {
     const chunk = new Chunk(cx, cz);
     const ox = cx * CHUNK_SIZE, oz = cz * CHUNK_SIZE;
@@ -167,13 +118,11 @@ export class World {
       }
     }
 
-    // Деревья (только в лесах)
     if (this.getBiome(ox + 8, oz + 8) === 'forest' && Math.random() < 0.1) {
       const groundY = this.terrainHeight(ox + 8, oz + 8);
       if (groundY < 55) this.generateBigTree(chunk, 8, 8, groundY);
     }
 
-    // Применяем пользовательские правки
     for (const [key, t] of this.edits) {
       const [ex, ey, ez] = key.split(',').map(Number);
       if (Math.floor(ex / CHUNK_SIZE) === cx && Math.floor(ez / CHUNK_SIZE) === cz) {
@@ -242,17 +191,19 @@ export class World {
   }
 }
 
-// ---------- Greedy meshing (без изменений) ----------
+// ---------- Greedy meshing ----------
 export function buildChunkMesh(world, chunk) {
   const positions = [], normals = [], colors = [], indices = [];
   const dims = [CHUNK_SIZE, WORLD_HEIGHT, CHUNK_SIZE];
   const wx0 = chunk.cx * CHUNK_SIZE, wz0 = chunk.cz * CHUNK_SIZE;
+
   const getType = (x, y, z) => {
     if (y < 0 || y >= WORLD_HEIGHT) return AIR;
     if (x < 0 || x >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE)
       return world.getBlock(wx0 + x, y, wz0 + z);
     return chunk.get(x, y, z);
   };
+
   function emitQuad(px, py, pz, du, dv, type, backface) {
     const c = BLOCK_COLORS[type];
     const base = positions.length / 3;
@@ -274,11 +225,13 @@ export function buildChunkMesh(world, chunk) {
     if (backface) indices.push(base, base+2, base+1, base, base+3, base+2);
     else indices.push(base, base+1, base+2, base, base+2, base+3);
   }
+
   const x = [0,0,0], q = [0,0,0];
   for (let d = 0; d < 3; d++) {
     const u = (d+1)%3, v = (d+2)%3;
     q[0]=q[1]=q[2]=0; q[d]=1;
     const mask = new Int16Array(dims[u] * dims[v]);
+
     for (x[d] = -1; x[d] < dims[d];) {
       let n = 0;
       for (x[v]=0; x[v]<dims[v]; x[v]++)
@@ -288,6 +241,7 @@ export function buildChunkMesh(world, chunk) {
           mask[n] = (a !== AIR) === (b !== AIR) ? 0 : (a !== AIR ? a : -b);
         }
       x[d]++;
+
       n = 0;
       for (let j = 0; j < dims[v]; j++)
         for (let i = 0; i < dims[u];) {
@@ -309,6 +263,7 @@ export function buildChunkMesh(world, chunk) {
         }
     }
   }
+
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute('normal',   new THREE.Float32BufferAttribute(normals, 3));
@@ -317,7 +272,7 @@ export function buildChunkMesh(world, chunk) {
   return new THREE.Mesh(geo, CHUNK_MATERIAL);
 }
 
-// LOD-меш с увеличенным перекрытием (отдельно можно не трогать, но оставим как есть)
+// ---------- LOD mesh с перекрытием ----------
 export function buildLODMesh(world, gx, gz, level) {
   const step = 1 << level;
   const n = CHUNK_SIZE;
