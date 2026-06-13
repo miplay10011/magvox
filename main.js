@@ -157,13 +157,13 @@ let yaw = 0, pitch = 0;
 
 // ========== Мир + менеджер чанков ==========
 let world = null;
-const FULL_RADIUS = 6;
+const FULL_RADIUS = 9;
 const LOD_RINGS = [
-  { level: 1, radius: 5 },
-  { level: 2, radius: 14 },
+  { level: 2, radius: 20 },
   { level: 3, radius: 48 },
 ];
-const FULL_BUDGET = 6, LOD_BUDGET = 5;
+const FULL_BUDGET = 8;
+const LOD_BUDGET = 6;
 const lodMeshes = new Map();
 
 function remeshChunk(chunk) {
@@ -585,7 +585,6 @@ function suicide() {
   stats.hp = 0;
   renderStats();
   damageFlash();
-  // Локальный респавн (аналогично серверному)
   stats.hp = 20;
   activeEffects.clear();
   renderStats();
@@ -637,10 +636,13 @@ chatInput.addEventListener('blur', () => {
 chatInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter' && chatInput.value.trim()) {
     let message = chatInput.value.trim();
-    // Проверяем команды
     if (message.startsWith('/')) {
       if (message === '/kill') {
         suicide();
+      } else if (message === '/fly') {
+        player.flying = !player.flying;
+        player.vel.set(0, 0, 0);
+        addChatMessage('Система', player.flying ? 'Режим полёта включён' : 'Режим полёта выключен');
       } else {
         addChatMessage('Система', `Неизвестная команда: ${message}`);
       }
@@ -648,11 +650,10 @@ chatInput.addEventListener('keypress', (e) => {
       chatInput.blur();
       return;
     }
-    // Обычное сообщение
     net.send('chat', { message: message });
     addChatMessage('You', message);
     chatInput.value = '';
-    chatInput.blur(); // закрываем чат после отправки
+    chatInput.blur();
   }
 });
 
@@ -749,7 +750,6 @@ document.addEventListener('mousemove', (e) => {
 
 const keys = new Set();
 document.addEventListener('keydown', (e) => {
-  // Открытие меню настроек
   if (e.code === 'Tab') {
     e.preventDefault();
     toggleSettings(!settingsOpen);
@@ -788,7 +788,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.code === 'KeyX' && combatMode) { spellQueue.length = 0; refreshQueueUI(); return; }
   keys.add(e.code);
-  if (e.code === 'KeyF') { player.flying = !player.flying; player.vel.set(0, 0, 0); }
+  // Клавиша F больше не включает полёт
   if (e.code.startsWith('Digit')) {
     const n = +e.code.slice(5);
     if (n >= 1 && n <= 9) {
@@ -838,7 +838,6 @@ function resolveBlockStuck() {
   const feetY = Math.floor(player.pos.y);
   const headY = Math.floor(player.pos.y + PLAYER.height - 0.2);
 
-  // Проверяем, есть ли блок внутри тела игрока
   let stuck = false;
   for (let y = feetY; y <= headY; y++) {
     for (let x = minX; x <= maxX; x++) {
@@ -852,7 +851,6 @@ function resolveBlockStuck() {
   }
   if (!stuck) return;
 
-  // Поиск ближайшего пустого места в радиусе 5 блоков
   const radius = 5;
   let bestDist = Infinity;
   let bestPos = null;
