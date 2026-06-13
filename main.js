@@ -157,9 +157,9 @@ let yaw = 0, pitch = 0;
 
 // ========== Мир + менеджер чанков ==========
 let world = null;
-const FULL_RADIUS = 5;
+const FULL_RADIUS = 6;
 const LOD_RINGS = [
-  { level: 1, radius: 8 },
+  { level: 1, radius: 6 },
   { level: 2, radius: 16 },
   { level: 3, radius: 32 },
 ];
