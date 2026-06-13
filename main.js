@@ -722,12 +722,6 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     return;
   }
-  if (e.code === 'Enter') {
-    chatInput.focus();
-    chatInput.value = '';
-    e.preventDefault();
-    return;
-  }
 
   if (e.code === 'KeyE') { toggleInventory(); return; }
   if (invOpen) return;
