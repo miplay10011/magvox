@@ -390,10 +390,10 @@ function createPlayerModel(color) {
   // Ноги (длина 0.6, ширина 0.3, глубина 0.3)
   const legGeo = new THREE.BoxGeometry(0.3, 0.6, 0.3);
   const leftLeg = new THREE.Mesh(legGeo, mat);
-  leftLeg.position.set(-0.2, 0.4, 0);
+  leftLeg.position.set(-0.2, 0.3, 0);
   group.add(leftLeg);
   const rightLeg = new THREE.Mesh(legGeo, mat);
-  rightLeg.position.set(0.2, 0.4, 0);
+  rightLeg.position.set(0.2, 0.3, 0);
   group.add(rightLeg);
   
   // Торс (высота 0.5, ширина 0.6, глубина 0.3)
@@ -403,7 +403,7 @@ function createPlayerModel(color) {
   group.add(torso);
   
   // Руки (длина 0.6, ширина 0.3, глубина 0.3)
-  const armGeo = new THREE.BoxGeometry(0.3, 1, 0.3);
+  const armGeo = new THREE.BoxGeometry(0.15, 1, 0.15);
   const leftArm = new THREE.Mesh(armGeo, mat);
   leftArm.position.set(-0.45, 0.85, 0);
   group.add(leftArm);
