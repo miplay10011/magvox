@@ -380,7 +380,7 @@ function updateTransients(dt) {
 const SERVER_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
 let myId = null;
 let myNickname = '';
-const remotePlayers = new Map(); // id -> { group, target, yaw, nickname }
+const remotePlayers = new Map(); // id -> { group, target, yaw, nickname, originalColors? }
 const remoteGeo = new THREE.BoxGeometry(PLAYER.width, PLAYER.height, PLAYER.width);
 
 // Функция создания модели игрока (голова, шея, торс, руки, ноги) + невидимый хитбокс
@@ -440,6 +440,36 @@ function createPlayerModel(color) {
   return group;
 }
 
+// Функция для временной красной вспышки всей модели
+function flashPlayerModel(group, duration = 200) {
+  if (!group) return;
+  // Сохраняем оригинальные цвета материалов
+  const originalColors = [];
+  group.children.forEach(child => {
+    if (child.isMesh && child.material) {
+      if (Array.isArray(child.material)) {
+        const mats = child.material;
+        originalColors.push(mats.map(m => m.color.clone()));
+        mats.forEach(m => m.color.setHex(0xff0000));
+      } else {
+        originalColors.push(child.material.color.clone());
+        child.material.color.setHex(0xff0000);
+      }
+    }
+  });
+  setTimeout(() => {
+    group.children.forEach((child, idx) => {
+      if (child.isMesh && child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach((m, i) => m.color.copy(originalColors[idx][i]));
+        } else {
+          child.material.color.copy(originalColors[idx]);
+        }
+      }
+    });
+  }, duration);
+}
+
 function addRemotePlayer(id, p) {
   if (id === myId || remotePlayers.has(id)) return;
   const hue = (id * 0.61) % 1;
@@ -454,7 +484,7 @@ function removeRemotePlayer(id) {
   const rp = remotePlayers.get(id);
   if (!rp) return;
   scene.remove(rp.group);
-  // диспоуз материалов/геометрий (опционально, но для простоты пропустим)
+  // диспоуз материалов/геометрий (опционально)
   remotePlayers.delete(id);
   setStatus(`онлайн · игроков: ${remotePlayers.size}`);
 }
@@ -559,11 +589,11 @@ net.on('hp', (m) => {
   else {
     const rp = remotePlayers.get(m.id);
     if (rp) {
-      // временная подсветка (можно добавить материал, но пока пропустим)
-      // rp.group.children.forEach(c => { if (c.material) c.material.emissive = new THREE.Color(0xff0000); });
-      setTimeout(() => {
-        // if (rp) rp.group.children.forEach(c => { if (c.material) c.material.emissive.setHex(0x000000); });
-      }, 150);
+      // Красная вспышка модели
+      flashPlayerModel(rp.group, 200);
+      // Партиклы крови/искр вокруг позиции
+      const pos = rp.group.position;
+      spawnParticles(pos.x, pos.y + 1, pos.z, 0xff3333, 20, 2, 1.0);
     }
   }
 });
@@ -574,6 +604,8 @@ net.on('effects', (m) => {
 });
 net.on('damaged', (m) => {
   stats.hp = m.hp; renderStats(); damageFlash();
+  // Добавляем партиклы вокруг камеры для локального урона
+  spawnParticles(camera.position.x, camera.position.y - 0.5, camera.position.z, 0xff4444, 15, 1.5, 0.8);
   const kb = m.kb ?? 8;
   if (kb > 0) {
     const dir = new THREE.Vector3(player.pos.x - m.ax, 0, player.pos.z - m.az).normalize();
@@ -1014,7 +1046,6 @@ function raycastPlayers(maxDist) {
   playerRaycaster.far = maxDist;
   let best = null;
   for (const [id, rp] of remotePlayers) {
-    // Рейкастим по всей группе, но хитбокс невидим, но участвует в рейкасте (прозрачный, но visible=true)
     const hits = playerRaycaster.intersectObject(rp.group, true);
     if (hits.length && (!best || hits[0].distance < best.dist)) {
       best = { id, dist: hits[0].distance };
