@@ -159,9 +159,9 @@ let yaw = 0, pitch = 0;
 let world = null;
 const FULL_RADIUS = 12;
 const LOD_RINGS = [
-  { level: 1, radius: 24 },
-  { level: 2, radius: 40 },
-  { level: 3, radius: 80 },
+  { level: 1, radius: 20 },
+  { level: 2, radius: 38 },
+  { level: 3, radius: 76 },
 ];
 const FULL_BUDGET = 12, LOD_BUDGET = 12;
 const lodMeshes = new Map();
