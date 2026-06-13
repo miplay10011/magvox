@@ -4,6 +4,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { createMagicEngine } from '../magic.js';
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught Exception:', err);
+});
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png' };
@@ -180,61 +183,74 @@ function applyDamage(targetId, dmg, src = {}) {
   const attackerId = src.attackerId;
   let weapon = src.weapon || 'неизвестного оружия';
   
+  // Безопасное получение атакующего (может отсутствовать)
+  const attacker = attackerId ? players.get(attackerId) : null;
+  
   // Огнеупорность
-  if (weapon.includes('огн') && target.effects.has('fire_resist')) dmg *= target.effects.get('fire_resist').power;
-  // Уязвимость (+50% урона)
+  if (weapon.includes('огн') && target.effects.has('fire_resist')) {
+    const resist = target.effects.get('fire_resist').power;
+    dmg *= (1 - resist);
+  }
+  // Уязвимость
   if (target.effects.has('vulnerability')) dmg *= 1.5;
-  // Слабость (-50% урона)
+  // Слабость
   if (target.effects.has('weakness')) dmg *= 0.5;
   
   // Барьер (личный щит)
   const ward = target.effects.get('ward');
   if (ward && dmg > 0) {
     const absorbed = Math.min(ward.power, dmg);
-    ward.power -= absorbed; dmg -= absorbed;
+    ward.power -= absorbed;
+    dmg -= absorbed;
     if (ward.power <= 0) target.effects.delete('ward');
     syncEffects(target);
   }
+  
+  // Бонус брони
   const bonus = target.effects.get('stoneskin')?.power || 0;
   dmg *= 1 - 0.04 * (target.armor + bonus);
   if (dmg <= 0 && !(src.kb > 0)) return;
   
-  // Ледяная кожа: замедляем атакующего
-  if (target.effects.has('ice_skin') && attackerId && attackerId !== targetId) {
-    const attacker = players.get(attackerId);
-    if (attacker && !attacker.effects.has('freeze')) {
-      attacker.effects.set('freeze', { until: Date.now() + (target.effects.get('ice_skin').power || 2000), power: 1 });
+  // Ледяная кожа (замедление атакующего)
+  if (target.effects.has('ice_skin') && attackerId && attackerId !== targetId && attacker) {
+    if (!attacker.effects.has('freeze')) {
+      const freezeDur = target.effects.get('ice_skin').power || 2;
+      attacker.effects.set('freeze', { until: Date.now() + freezeDur * 1000, power: 1 });
       syncEffects(attacker);
     }
   }
   
-  // Цепочка послушания
+  // Цепочка послушания (с защитой от рекурсии и смерти)
   if (target.chainLink && players.has(target.chainLink)) {
     const linked = players.get(target.chainLink);
-    if (linked && linked !== target) {
-      const linkedDmg = dmg * (target.chainTransfer || 0.5);
+    if (linked && linked !== target && linked.hp > 0 && dmg > 0) {
+      const transferPercent = target.chainTransfer || 0.5;
+      const linkedDmg = dmg * transferPercent;
       if (linkedDmg > 0) {
+        // Важно: не передаём weapon, чтобы не зациклиться
         applyDamage(target.chainLink, linkedDmg, { ...src, weapon: 'цепочки послушания', attackerId, kb: 0 });
       }
     }
   }
   
-  // Сфера абсолютной защиты – отражение
-  if (target.sphereReflect && target.sphereReflect > 0 && attackerId && attackerId !== targetId) {
+  // Сфера абсолютной защиты – отражение (только если цель жива и есть атакующий)
+  if (target.sphereReflect && target.sphereReflect > 0 && attackerId && attackerId !== targetId && attacker && attacker.hp > 0) {
     const reflected = dmg * target.sphereReflect;
-    applyDamage(attackerId, reflected, { weapon: 'отражённый урон', attackerId: targetId });
+    if (reflected > 0) {
+      applyDamage(attackerId, reflected, { weapon: 'отражённый урон', attackerId: targetId });
+    }
   }
   
   const wasAlive = target.hp > 0;
   target.hp -= Math.max(0, dmg);
   
-  // Феникс-возрождение (если hp < 4 и не использовано за 2 минуты)
+  // Феникс-возрождение (если hp < 4 и не использовано)
   if (target.hp <= 4 && !target.phoenixUsed && target.effects.has('phoenix')) {
     target.phoenixUsed = true;
     target.hp = 8;
     broadcast('systemMessage', { message: `${target.nickname} возродился как Феникс!` });
     broadcast('hp', { id: targetId, hp: target.hp });
-    // слепота и страх вокруг
+    // Эффект страха и слепоты вокруг
     for (const [id, p] of players) {
       if (id === targetId) continue;
       if (Math.hypot(p.x - target.x, p.z - target.z) < 8) {
@@ -247,22 +263,27 @@ function applyDamage(targetId, dmg, src = {}) {
   }
   
   if (target.hp <= 0 && wasAlive) {
-    target.hp = 20; target.effects.clear(); syncEffects(target);
+    target.hp = 20;
+    target.effects.clear();
+    syncEffects(target);
     broadcast('respawn', { id: targetId });
     broadcast('hp', { id: targetId, hp: 20 });
-    // сброс флага феникса при смерти
     target.phoenixUsed = false;
-    if (attackerId && attackerId !== targetId) {
-      const attacker = players.get(attackerId);
-      if (attacker) {
-        const killMsg = `${attacker.nickname} убил ${target.nickname} с помощью ${weapon}`;
-        broadcast('systemMessage', { message: killMsg });
-        console.log(killMsg);
-      } else broadcast('systemMessage', { message: `${target.nickname} погиб` });
-    } else broadcast('systemMessage', { message: `${target.nickname} погиб` });
+    if (attackerId && attackerId !== targetId && attacker) {
+      const killMsg = `${attacker.nickname} убил ${target.nickname} с помощью ${weapon}`;
+      broadcast('systemMessage', { message: killMsg });
+      console.log(killMsg);
+    } else {
+      broadcast('systemMessage', { message: `${target.nickname} погиб` });
+    }
   } else {
     if (dmg > 0) broadcast('hp', { id: targetId, hp: target.hp });
-    send(target.ws, 'damaged', { ax: src.ax ?? target.x, az: src.az ?? target.z, hp: target.hp, kb: src.kb ?? 6 });
+    send(target.ws, 'damaged', {
+      ax: src.ax ?? target.x,
+      az: src.az ?? target.z,
+      hp: target.hp,
+      kb: src.kb ?? 6
+    });
   }
 }
 
