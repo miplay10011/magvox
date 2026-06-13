@@ -3,6 +3,7 @@ import { World, buildChunkMesh, buildLODMesh, AIR, BLOCK_COLORS, CHUNK_SIZE,
          GRASS, DIRT, STONE, WOOD, LEAVES, PLANKS, SAND, GRAVEL, COAL_ORE, IRON_ORE } from './world.js';
 import { Network } from './network.js';
 import { createMagicEngine } from './magic.js';
+import { initParticles, spawnParticles, updateParticles } from './particles.js';
 
 // ========== Рендер ==========
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -11,8 +12,10 @@ renderer.setPixelRatio(devicePixelRatio);
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
+initParticles(scene);  
 scene.background = new THREE.Color(0x87ceeb);
 scene.fog = new THREE.Fog(0x87ceeb, 400, 1400);
+
 
 const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 1500);
 camera.rotation.order = 'YXZ';
@@ -100,48 +103,9 @@ function toggleSettings(open) {
 }
 
 // ========== Партиклы ==========
-const MAX_P = 3000;
-const pGeo = new THREE.BufferGeometry();
-const pPosArr = new Float32Array(MAX_P * 3), pColArr = new Float32Array(MAX_P * 3);
-pGeo.setAttribute('position', new THREE.BufferAttribute(pPosArr, 3));
-pGeo.setAttribute('color', new THREE.BufferAttribute(pColArr, 3));
-const pPoints = new THREE.Points(pGeo, new THREE.PointsMaterial({
-  size: 0.18, vertexColors: true, transparent: true, opacity: 0.9,
-}));
-pPoints.frustumCulled = false;
-scene.add(pPoints);
-const particles = [];
 
-function spawnParticles(x, y, z, color, count, spread, life = 0.8) {
-  const c = new THREE.Color(color);
-  for (let i = 0; i < count; i++) {
-    if (particles.length >= MAX_P) particles.shift();
-    particles.push({
-      x, y, z,
-      vx: (Math.random() - 0.5) * spread,
-      vy: Math.random() * spread * 0.8,
-      vz: (Math.random() - 0.5) * spread,
-      life: life * (0.5 + Math.random() * 0.5),
-      r: c.r, g: c.g, b: c.b,
-    });
-  }
-}
-function updateParticles(dt) {
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const pt = particles[i];
-    pt.life -= dt;
-    if (pt.life <= 0) { particles.splice(i, 1); continue; }
-    pt.vy -= 6 * dt;
-    pt.x += pt.vx * dt; pt.y += pt.vy * dt; pt.z += pt.vz * dt;
-  }
-  particles.forEach((pt, i) => {
-    pPosArr.set([pt.x, pt.y, pt.z], i * 3);
-    pColArr.set([pt.r, pt.g, pt.b], i * 3);
-  });
-  pGeo.setDrawRange(0, particles.length);
-  pGeo.attributes.position.needsUpdate = true;
-  pGeo.attributes.color.needsUpdate = true;
-}
+
+
 
 // ========== Игрок ==========
 const PLAYER = { width: 0.6, height: 1.8, eye: 1.62 };
