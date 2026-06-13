@@ -100,13 +100,13 @@ function toggleSettings(open) {
 }
 
 // ========== Партиклы ==========
-const MAX_P = 5000;
+const MAX_P = 3000;
 const pGeo = new THREE.BufferGeometry();
 const pPosArr = new Float32Array(MAX_P * 3), pColArr = new Float32Array(MAX_P * 3);
 pGeo.setAttribute('position', new THREE.BufferAttribute(pPosArr, 3));
 pGeo.setAttribute('color', new THREE.BufferAttribute(pColArr, 3));
 const pPoints = new THREE.Points(pGeo, new THREE.PointsMaterial({
-  size: 0.2, vertexColors: true, transparent: true, opacity: 0.9,
+  size: 0.18, vertexColors: true, transparent: true, opacity: 0.9,
 }));
 pPoints.frustumCulled = false;
 scene.add(pPoints);
@@ -273,8 +273,9 @@ const EFFECT_NAMES = {
   jump_boost: '🚀 Прыгучесть', regen: '💚 Регенерация', fire_resist: '🔥 Огнеупорность',
   fire_aura: '🔥 Огненная аура', ice_skin: '❄ Ледяная кожа', chain_lightning: '⚡ Разряд',
   blind: '🌫️ Ослепление', weightless: '🍃 Невесомость',
-  weakness: '💔 Слабость', vulnerability: '⚠️ Уязвимость', disorient: '🌀 Дезориентация',
-  disarm: '⚔️ Разоружение', shadow_shackles: '⛓️ Теневые оковы', time_slow: '⏳ Замедление времени',
+  weakness: '📉 Слабость', vulnerability: '🎯 Уязвимость', disorient: '🌀 Дезориентация',
+  disarm: '⚔️ Разоружение', shadow_shackles: '⛓️ Теневые оковы', fear: '😨 Страх',
+  time_slow: '⏳ Замедление времени',
 };
 function effectActive(name) {
   const e = activeEffects.get(name);
@@ -292,45 +293,6 @@ function renderEffects(now) {
   }
   effectsEl.innerHTML = html;
 }
-
-// ========== Визуальные эффекты для новых способностей ==========
-let disorientOverlay = null;
-function setDisorient(active) {
-  if (!disorientOverlay) {
-    disorientOverlay = document.createElement('div');
-    disorientOverlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:radial-gradient(circle, rgba(0,0,0,0.6), rgba(0,0,0,0.9)); pointer-events:none; z-index:1000; display:none; backdrop-filter: blur(4px);';
-    document.body.appendChild(disorientOverlay);
-  }
-  disorientOverlay.style.display = active ? 'block' : 'none';
-}
-
-let disarmText = null;
-function setDisarm(active) {
-  if (!disarmText) {
-    disarmText = document.createElement('div');
-    disarmText.style.cssText = 'position:fixed; bottom:30%; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.7); color:#ffaa44; padding:10px 20px; border-radius:8px; font-family:monospace; font-size:20px; pointer-events:none; z-index:1000; display:none;';
-    disarmText.textContent = '⚔️ ОРУЖИЕ РАЗРЯЖЕНО ⚔️';
-    document.body.appendChild(disarmText);
-  }
-  disarmText.style.display = active ? 'block' : 'none';
-  if (active) setTimeout(() => { if (disarmText) disarmText.style.display = 'none'; }, 3000);
-}
-
-let shacklesEffect = null;
-function applyShackles(targetPos) {
-  if (!shacklesEffect) {
-    const geo = new THREE.TorusGeometry(0.6, 0.1, 16, 32);
-    const mat = new THREE.MeshStandardMaterial({ color: 0x330066, emissive: 0x220044 });
-    shacklesEffect = new THREE.Mesh(geo, mat);
-    scene.add(shacklesEffect);
-  }
-  shacklesEffect.position.copy(targetPos);
-  shacklesEffect.visible = true;
-  setTimeout(() => { if (shacklesEffect) shacklesEffect.visible = false; }, 6000);
-}
-
-let shieldMesh = null; // для барьера (щит вокруг игрока)
-let timeSlowIndicator = null; // визуал для зон замедления
 
 // ========== Магия: кольцо элементов, очередь ==========
 const ELEMENTS = [
@@ -395,9 +357,9 @@ function addElement(i) {
 const PROJ_COLORS = {
   fire: 0xf4502a, water: 0x3a6cf4, air: 0xbfe8ff, earth: 0x8b5a2b,
   ice: 0x9ff5ff, dark: 0x603a80, light: 0xffe9a0, beam: 0xffd34d,
-  chaos: 0xff44cc,
+  chaos: 0xaa44ff,
 };
-const projGeo = new THREE.SphereGeometry(0.3, 8, 6);
+const projGeo = new THREE.SphereGeometry(0.25, 8, 6);
 const projectiles = new Map();
 const mineMeshes = new Map();
 const transients = [];
@@ -426,7 +388,7 @@ function updateTransients(dt) {
 const SERVER_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
 let myId = null;
 let myNickname = '';
-const remotePlayers = new Map();
+const remotePlayers = new Map(); // id -> { group, target, yaw, nickname, lastPos, phase }
 
 function createPlayerModel(color) {
   const group = new THREE.Group();
@@ -562,12 +524,13 @@ function updateRemotePlayers(dt) {
 
 const net = new Network(SERVER_URL);
 
-// ========== Обработчики событий (визуалы для новых способностей) ==========
+// --- Общие игровые события ---
 const EVENTS = {
   blockUpdate: (m) => { if (world) world.setBlock(m.x, m.y, m.z, m.t).forEach(remeshChunk); },
   projSpawn: (m) => {
-    const color = PROJ_COLORS[m.kind] || 0xffffff;
-    const mat = new THREE.MeshBasicMaterial({ color });
+    const mat = new THREE.MeshBasicMaterial({
+      color: m.kind === 'meteor' ? 0xff6622 : (PROJ_COLORS[m.kind] || 0xffffff),
+    });
     const mesh = new THREE.Mesh(projGeo, mat);
     mesh.scale.setScalar(m.scale || 1);
     mesh.position.set(m.x, m.y, m.z);
@@ -672,18 +635,17 @@ const EVENTS = {
     spawnParticles(m.x0, 1, m.z0, 0x9900ff, 40, 4, 0.7);
     spawnParticles(m.x1, 1, m.z1, 0x9900ff, 40, 4, 0.7);
   },
-  // Новые визуалы
   dragonBreathCone: (m) => {
     for (let i = 0; i < 60; i++) {
-      const angle = m.yaw + (Math.random() - 0.5) * Math.PI / 2;
+      const angle = m.yaw + (Math.random() - 0.5) * Math.PI / 1.5;
       const dist = Math.random() * 8;
       const x = m.origin.x + Math.sin(angle) * dist;
       const z = m.origin.z + Math.cos(angle) * dist;
-      spawnParticles(x, 1.5, z, 0xff8844, 5, 0.5, 0.3);
+      spawnParticles(x, 1.5, z, 0xffaa66, 3, 0.8, 0.4);
     }
   },
   dragonBreathFx: (m) => {
-    spawnParticles(m.to.x, m.to.y + 1, m.to.z, 0xff6633, 20, 2, 0.8);
+    spawnParticles(m.to.x, m.to.y + 1, m.to.z, 0xff6644, 20, 2, 0.6);
   },
   totemSpawn: (m) => {
     const geo = new THREE.BoxGeometry(0.8, 1.2, 0.8);
@@ -691,7 +653,7 @@ const EVENTS = {
     const totem = new THREE.Mesh(geo, mat);
     totem.position.set(m.x, 0.6, m.z);
     scene.add(totem);
-    setTimeout(() => scene.remove(totem), m.duration * 1000);
+    setTimeout(() => scene.remove(totem), (m.duration || 30) * 1000);
   },
   totemCharge: (m) => {
     const target = remotePlayers.get(m.targetId);
@@ -700,103 +662,114 @@ const EVENTS = {
     }
   },
   totemPower: (m) => {
-    // визуально ничего, но можно добавить искры
-  },
-  totemEnd: () => {},
-  sphereSpawn: (m) => {
-    const sphereGeo = new THREE.SphereGeometry(3, 32, 32);
-    const sphereMat = new THREE.MeshPhongMaterial({ color: 0x44aaff, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
-    const sphere = new THREE.Mesh(sphereGeo, sphereMat);
-    sphere.position.set(m.x, m.y + 1.5, m.z);
-    scene.add(sphere);
-    setTimeout(() => scene.remove(sphere), m.duration * 1000);
-  },
-  sphereEnd: () => {},
-  asteroidStart: (m) => {
-    // партиклы падающего астероида
-    for (let i = 0; i < 50; i++) {
-      const x = m.x + (Math.random() - 0.5) * 4;
-      const z = m.z + (Math.random() - 0.5) * 4;
-      spawnParticles(x, m.startY + Math.random() * 20, z, 0x553333, 3, 1, 1.5);
+    // визуально – вспышка на цели
+    const target = remotePlayers.get(m.targetId);
+    if (target) {
+      spawnParticles(target.group.position.x, target.group.position.y + 1, target.group.position.z, 0xffdd88, 15, 1, 0.3);
     }
   },
-  asteroidImpact: (m) => {
-    spawnParticles(m.x, 1, m.z, 0x884444, 100, 6, 1.2);
-    // воронка уже создана сервером
+  totemEnd: (m) => {},
+  sphereSpawn: (m) => {
+    const sphereGeo = new THREE.SphereGeometry(3, 32, 32);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x44aaff, transparent: true, opacity: 0.3, wireframe: true });
+    const sphere = new THREE.Mesh(sphereGeo, mat);
+    sphere.position.set(m.x, m.y + 1.5, m.z);
+    scene.add(sphere);
+    setTimeout(() => scene.remove(sphere), (m.duration || 8) * 1000);
   },
-  timeSlowZone: (m) => {
-    const ringGeo = new THREE.RingGeometry(m.radius - 0.2, m.radius + 0.2, 32);
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0x88aaff, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.set(m.x, 0.05, m.z);
-    scene.add(ring);
-    setTimeout(() => scene.remove(ring), m.duration * 1000);
+  sphereEnd: (m) => {},
+  asteroidStart: (m) => {
+    const geo = new THREE.SphereGeometry(1.5, 16, 16);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0x441111 });
+    const asteroid = new THREE.Mesh(geo, mat);
+    asteroid.position.set(m.x, m.startY, m.z);
+    scene.add(asteroid);
+    // анимация падения
+    let t = 0;
+    const fall = setInterval(() => {
+      t += 0.05;
+      asteroid.position.y -= 2;
+      if (asteroid.position.y < 1) {
+        clearInterval(fall);
+        scene.remove(asteroid);
+      }
+    }, 50);
+    setTimeout(() => scene.remove(asteroid), 1500);
+  },
+  asteroidImpact: (m) => {
+    spawnParticles(m.x, 2, m.z, 0x884422, 100, 6, 1.2);
+    for (let i = 0; i < 50; i++) {
+      const dx = (Math.random() - 0.5) * m.radius * 2;
+      const dz = (Math.random() - 0.5) * m.radius * 2;
+      spawnParticles(m.x + dx, 1, m.z + dz, 0x664422, 5, 1, 0.8);
+    }
   },
   stompFx: (m) => {
-    spawnParticles(m.x, 0.5, m.z, 0xaa8866, 60, 5, 0.6);
-    const ringGeo = new THREE.RingGeometry(0.5, m.radius, 16);
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffaa66, side: THREE.DoubleSide, transparent: true });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
+    const ringGeo = new THREE.RingGeometry(0.5, m.radius, 32);
+    const mat = new THREE.MeshBasicMaterial({ color: 0xffaa44, side: THREE.DoubleSide, transparent: true });
+    const ring = new THREE.Mesh(ringGeo, mat);
     ring.rotation.x = -Math.PI / 2;
     ring.position.set(m.x, 0.1, m.z);
     scene.add(ring);
-    setTimeout(() => scene.remove(ring), 300);
+    setTimeout(() => scene.remove(ring), 500);
+    spawnParticles(m.x, 0.5, m.z, 0xffaa44, 40, 3, 0.6);
   },
   vortexSpawn: (m) => {
-    const particleCount = 200;
-    for (let i = 0; i < particleCount; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const rad = Math.random() * m.radius;
-      const x = m.x + Math.cos(angle) * rad;
-      const z = m.z + Math.sin(angle) * rad;
-      spawnParticles(x, 1 + Math.random() * 3, z, 0x553366, 1, 0.2, 1.0);
+    const points = [];
+    for (let i = 0; i <= 20; i++) {
+      const angle = i * Math.PI * 2 / 20;
+      const x = m.x + Math.cos(angle) * 4;
+      const z = m.z + Math.sin(angle) * 4;
+      points.push(new THREE.Vector3(x, 0.2, z));
     }
+    const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x660066 });
+    const circle = new THREE.LineLoop(lineGeo, lineMat);
+    scene.add(circle);
+    setTimeout(() => scene.remove(circle), (m.duration || 8) * 1000);
   },
   vortexEnd: () => {},
   cageSpawn: (m) => {
     const target = remotePlayers.get(m.targetId);
     if (target) {
-      const boxGeo = new THREE.BoxGeometry(1.2, 1.8, 1.2);
-      const boxMat = new THREE.MeshBasicMaterial({ color: 0xffdd88, wireframe: true });
-      const cage = new THREE.Mesh(boxGeo, boxMat);
-      cage.position.copy(target.group.position);
-      scene.add(cage);
-      setTimeout(() => scene.remove(cage), 6000);
+      const box = new THREE.BoxHelper(target.group, 0xff44ff);
+      scene.add(box);
+      setTimeout(() => scene.remove(box), 6000);
     }
   },
-  cageEnd: (m) => {
-    // убираем визуал
-  },
+  cageEnd: (m) => {},
   shacklesFx: (m) => {
     const target = remotePlayers.get(m.targetId);
     if (target) {
-      applyShackles(target.group.position);
+      spawnParticles(target.group.position.x, target.group.position.y + 1, target.group.position.z, 0x000000, 30, 2, 1);
     }
+  },
+  timeSlowZone: (m) => {
+    const ringGeo = new THREE.RingGeometry(m.radius - 0.2, m.radius + 0.2, 32);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x88aaff, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+    const ring = new THREE.Mesh(ringGeo, mat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(m.x, 0.1, m.z);
+    scene.add(ring);
+    setTimeout(() => scene.remove(ring), (m.duration || 15) * 1000);
   },
 };
 for (const [t, f] of Object.entries(EVENTS)) net.on(t, f);
 
-// ========== Оверлей слепоты и другие эффекты ==========
+// Ослепление (оверлей)
 let blindnessOverlay = null;
 function setBlindness(active) {
   if (!blindnessOverlay) {
     blindnessOverlay = document.createElement('div');
-    blindnessOverlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,200,0.85); pointer-events:none; z-index:1000; display:none;';
+    blindnessOverlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,200,0.7); pointer-events:none; z-index:1000; display:none;';
     document.body.appendChild(blindnessOverlay);
   }
   blindnessOverlay.style.display = active ? 'block' : 'none';
 }
 
-// Обновление эффектов каждые 200 мс
-setInterval(() => {
-  if (activeEffects.has('disorient')) setDisorient(true);
-  else setDisorient(false);
-  if (activeEffects.has('disarm')) setDisarm(true);
-  else setDisarm(false);
-}, 200);
+// Барьер (визуал)
+let shieldMesh = null;
 
-// ========== Обработчики сети ==========
 net.on('init', (m) => {
   myId = m.id;
   myNickname = m.nickname;
@@ -832,10 +805,19 @@ net.on('effects', (m) => {
   activeEffects.clear();
   for (const it of m.list) activeEffects.set(it.e, { until: it.until, power: it.power });
   setBlindness(activeEffects.has('blind'));
-  // Барьер (щит)
+  // Визуал дезориентации (переворот экрана)
+  if (activeEffects.has('disorient')) {
+    document.body.style.transform = 'rotate(180deg)';
+    setTimeout(() => document.body.style.transform = '', 6000);
+  }
+  // Визуал страха (эффект размытия)
+  if (activeEffects.has('fear')) {
+    document.body.style.filter = 'blur(4px)';
+    setTimeout(() => document.body.style.filter = '', 5000);
+  }
   if (activeEffects.has('ward')) {
     if (!shieldMesh) {
-      const sphereGeo = new THREE.SphereGeometry(0.85, 16, 16);
+      const sphereGeo = new THREE.SphereGeometry(0.8, 16, 16);
       const shieldMat = new THREE.MeshBasicMaterial({ color: 0x44aaff, transparent: true, opacity: 0.3, wireframe: true });
       shieldMesh = new THREE.Mesh(sphereGeo, shieldMat);
       shieldMesh.position.set(0, 1, 0);
@@ -844,19 +826,11 @@ net.on('effects', (m) => {
   } else {
     if (shieldMesh) { camera.remove(shieldMesh); shieldMesh = null; }
   }
-  // Теневые оковы: на клиенте можно добавить визуал
+  // Теневые оковы: фиксация обзора на сервере – добавим клиентский эффект
   if (activeEffects.has('shadow_shackles')) {
-    // визуал оков вокруг камеры (просто для примера)
-    if (!shacklesEffect) {
-      const ringGeo = new THREE.TorusGeometry(0.6, 0.05, 16, 32);
-      const ringMat = new THREE.MeshStandardMaterial({ color: 0x440066, emissive: 0x220044 });
-      const ring = new THREE.Mesh(ringGeo, ringMat);
-      ring.position.set(0, 0.5, 0.5);
-      camera.add(ring);
-      shacklesEffect = ring;
-    }
-  } else {
-    if (shacklesEffect) { camera.remove(shacklesEffect); shacklesEffect = null; }
+    // заблокируем поворот камеры
+    document.body.style.pointerEvents = 'none';
+    setTimeout(() => document.body.style.pointerEvents = '', 6000);
   }
 });
 net.on('damaged', (m) => {
@@ -1039,7 +1013,7 @@ function makeLocalCtx() {
       if (effectActive('curse')) return;
       stats.hp = Math.min(20, stats.hp + a); renderStats();
     },
-    clearDebuffs: () => { for (const b of ['burning', 'slow', 'freeze', 'curse','blind','weakness','vulnerability','disorient','disarm','shadow_shackles','time_slow']) activeEffects.delete(b); },
+    clearDebuffs: () => { for (const b of ['burning','slow','freeze','curse','blind','weakness','vulnerability','disorient','disarm','shadow_shackles']) activeEffects.delete(b); },
     getMana: () => stats.mana,
     spendMana: (id, c) => { stats.mana -= c; renderStats(); },
     teleportPlayer: (id, x, y, z) => { player.pos.set(x, y, z); player.vel.set(0, 0, 0); },
@@ -1231,8 +1205,8 @@ function updatePlayer(dt) {
   if (sp) speedMul *= sp.power;
   if (effectActive('slow'))   speedMul *= 0.5;
   if (effectActive('freeze')) speedMul = 0;
-  if (effectActive('time_slow')) speedMul *= 0.5;
 
+  // Прыгучесть
   let jumpPower = JUMP_SPEED;
   if (effectActive('jump_boost')) jumpPower *= 1.5;
 
@@ -1268,6 +1242,7 @@ function updatePlayer(dt) {
     moveAxis(dt, 'z');
   }
 
+  // Невесомость (двойной прыжок, медленное падение)
   if (effectActive('weightless')) {
     if (!player.flying && !player.onGround && player.vel.y < 0) player.vel.y *= 0.98;
     if (keys.has('Space') && !player.onGround && !player.doubleJumpUsed) {
