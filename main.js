@@ -414,7 +414,7 @@ function createPlayerModel(color) {
   // Голова (куб 0.5x0.5x0.5)
   const headGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
   const head = new THREE.Mesh(headGeo, mat);
-  head.position.set(0, 2.2, 0);
+  head.position.set(0, 1.6, 0);
   group.add(head);
   
   // Невидимый хитбокс (размеры PLAYER)
