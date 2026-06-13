@@ -261,46 +261,92 @@ function startWorld(seed, edits = []) {
   chunkManagerTick();
 }
 
+function isChunkInView(cx, cz, playerPos, yaw, fovDegrees = 100) {
+    // Центр чанка в мировых координатах
+    const chunkCenterX = (cx + 0.5) * CHUNK_SIZE;
+    const chunkCenterZ = (cz + 0.5) * CHUNK_SIZE;
+    const dx = chunkCenterX - playerPos.x;
+    const dz = chunkCenterZ - playerPos.z;
+    const distSq = dx*dx + dz*dz;
+    // Если чанк очень близко – загружаем всегда (чтобы не было дыр под ногами)
+    if (distSq < (CHUNK_SIZE * 2) ** 2) return true;
+
+    // Направление от игрока к центру чанка
+    const angleToChunk = Math.atan2(dz, dx);
+    // Направление взгляда: yaw – это угол поворота по горизонтали (в радианах, 0 – взгляд на +Z)
+    const viewAngle = yaw;
+    let diff = Math.abs(angleToChunk - viewAngle);
+    diff = Math.min(Math.abs(diff), Math.PI * 2 - Math.abs(diff));
+    const halfFovRad = (fovDegrees * Math.PI) / 180 / 2;
+    return diff < halfFovRad;
+}
+
 function chunkManagerTick() {
-  if (!world) return;
-  const pcx = Math.floor(player.pos.x / CHUNK_SIZE);
-  const pcz = Math.floor(player.pos.z / CHUNK_SIZE);
+    if (!world) return;
+    const pcx = Math.floor(player.pos.x / CHUNK_SIZE);
+    const pcz = Math.floor(player.pos.z / CHUNK_SIZE);
 
-  const wantFull = new Set(), missing = [];
-  for (let dx = -FULL_RADIUS; dx <= FULL_RADIUS; dx++)
-    for (let dz = -FULL_RADIUS; dz <= FULL_RADIUS; dz++) {
-      const cx = pcx + dx, cz = pcz + dz;
-      wantFull.add(world.key(cx, cz));
-      if (!world.getChunk(cx, cz)) missing.push([cx, cz, dx * dx + dz * dz]);
-    }
-  missing.sort((a, b) => a[2] - b[2]);
-  for (const [cx, cz] of missing.slice(0, FULL_BUDGET)) {
-    remeshChunk(world.generateChunk(cx, cz));
-    for (const [nx, nz] of [[cx + 1, cz], [cx - 1, cz], [cx, cz + 1], [cx, cz - 1]]) {
-      const nb = world.getChunk(nx, nz);
-      if (nb?.mesh) remeshChunk(nb);
-    }
-  }
-  for (const [key, c] of world.chunks) {
-    if (wantFull.has(key)) continue;
-    if (c.mesh) { scene.remove(c.mesh); c.mesh.geometry.dispose(); }
-    world.chunks.delete(key);
-  }
+    // Получаем направление взгляда (yaw)
+    const viewYaw = yaw;
 
-  const wantLod = new Set(), lodMissing = [];
-  let inner = FULL_RADIUS;
-  for (const { level, radius } of LOD_RINGS) {
-    const s = 1 << level;
-    for (let gx = Math.floor((pcx - radius) / s); gx <= Math.floor((pcx + radius) / s); gx++)
-      for (let gz = Math.floor((pcz - radius) / s); gz <= Math.floor((pcz + radius) / s); gz++) {
-        const d = Math.max(Math.abs(gx * s + s / 2 - pcx), Math.abs(gz * s + s / 2 - pcz));
-        if (d > radius || d <= inner) continue;
-        const key = `${level}:${gx},${gz}`;
-        wantLod.add(key);
-        if (!lodMeshes.has(key)) lodMissing.push([key, gx, gz, level, d]);
-      }
-    inner = radius;
-  }
+    // Собираем список чанков, которые должны быть загружены (в радиусе FULL_RADIUS + проверка видимости)
+    const wantFull = new Set();
+    const missing = [];
+
+    for (let dx = -FULL_RADIUS; dx <= FULL_RADIUS; dx++) {
+        for (let dz = -FULL_RADIUS; dz <= FULL_RADIUS; dz++) {
+            const cx = pcx + dx, cz = pcz + dz;
+            // Проверяем, виден ли чанк (с запасом)
+            if (!isChunkInView(cx, cz, player.pos, viewYaw, 110)) {
+                // Если чанк сзади и не очень близко – пропускаем (не загружаем)
+                const distSq = dx*dx + dz*dz;
+                if (distSq > 9) continue; // не загружаем чанки дальше 3 блоков сзади
+            }
+            const key = world.key(cx, cz);
+            wantFull.add(key);
+            if (!world.getChunk(cx, cz)) missing.push([cx, cz, dx*dx + dz*dz]);
+        }
+    }
+
+    // Сортируем по удалённости и загружаем не более FULL_BUDGET чанков за тик
+    missing.sort((a,b) => a[2] - b[2]);
+    for (const [cx, cz] of missing.slice(0, FULL_BUDGET)) {
+        remeshChunk(world.generateChunk(cx, cz));
+        // Пересоседние чанки для обновления граней
+        for (const [nx, nz] of [[cx+1,cz],[cx-1,cz],[cx,cz+1],[cx,cz-1]]) {
+            const nb = world.getChunk(nx, nz);
+            if (nb?.mesh) remeshChunk(nb);
+        }
+    }
+
+    // Удаляем чанки, которые больше не нужны
+    for (const [key, c] of world.chunks) {
+        if (!wantFull.has(key)) {
+            if (c.mesh) { scene.remove(c.mesh); c.mesh.geometry.dispose(); }
+            world.chunks.delete(key);
+        }
+    }
+
+    // Аналогично для LOD-мешей – можно тоже проверять видимость или загружать всегда, но LOD и так разрежен
+    // (оставляем как есть или тоже фильтруем)
+    const wantLod = new Set();
+    const lodMissing = [];
+    let inner = FULL_RADIUS;
+    for (const { level, radius } of LOD_RINGS) {
+        const s = 1 << level;
+        for (let gx = Math.floor((pcx - radius) / s); gx <= Math.floor((pcx + radius) / s); gx++) {
+            for (let gz = Math.floor((pcz - radius) / s); gz <= Math.floor((pcz + radius) / s); gz++) {
+                const d = Math.max(Math.abs(gx * s + s/2 - pcx), Math.abs(gz * s + s/2 - pcz));
+                if (d > radius || d <= inner) continue;
+                // LOD-меши можно загружать всегда, они легковесны, но тоже можно проверить видимость
+                if (!isChunkInView(gx * s, gz * s, player.pos, viewYaw, 140)) continue;
+                const key = `${level}:${gx},${gz}`;
+                wantLod.add(key);
+                if (!lodMeshes.has(key)) lodMissing.push([key, gx, gz, level, d]);
+            }
+        }
+        inner = radius;
+    }
   lodMissing.sort((a, b) => a[4] - b[4]);
   for (const [key, gx, gz, level] of lodMissing.slice(0, LOD_BUDGET)) {
     const mesh = buildLODMesh(world, gx, gz, level);
