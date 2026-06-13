@@ -315,7 +315,7 @@ function chunkManagerTick() {
 setInterval(chunkManagerTick, 250);
 
 // ========== Статы и эффекты ==========
-const stats = { hp: 20, armor: 0, mana: 20, maxMana: 20 };
+const stats = { hp: 50, armor: 0, mana: 20, maxMana: 20 };
 const activeEffects = new Map();
 let burnAcc = 0;
 
@@ -924,7 +924,7 @@ net.on('damaged', (m) => {
 });
 net.on('respawn', (m) => {
   if (m.id !== myId) return;
-  stats.hp = 20; renderStats();
+  stats.hp = 50; renderStats();
   activeEffects.clear();
   let attempts = 0;
   let foundSpot = false;
@@ -989,7 +989,7 @@ function suicide() {
   stats.hp = 0;
   renderStats();
   damageFlash();
-  stats.hp = 20;
+  stats.hp = 50;
   activeEffects.clear();
   renderStats();
   let attempts = 0;
@@ -1082,7 +1082,7 @@ function makeLocalCtx() {
         player.vel.y += 4;
       }
       if (stats.hp <= 0) {
-        stats.hp = 20; activeEffects.clear(); renderStats();
+        stats.hp = 50; activeEffects.clear(); renderStats();
         player.pos.set(0.5, world.terrainHeight(0, 0) + 1, 0.5);
       }
     },
@@ -1090,7 +1090,7 @@ function makeLocalCtx() {
       activeEffects.set(type, { until: Date.now() + dur * 1000, power: power?.power ?? power }),
     healPlayer: (id, a) => {
       if (effectActive('curse')) return;
-      stats.hp = Math.min(20, stats.hp + a); renderStats();
+      stats.hp = Math.min(50, stats.hp + a); renderStats();
     },
     clearDebuffs: () => { for (const b of ['burning','slow','freeze','curse','blind','weakness','vulnerability','disorient','disarm','shadow_shackles']) activeEffects.delete(b); },
     getMana: () => stats.mana,

@@ -256,7 +256,7 @@ function applyDamage(targetId, dmg, src = {}) {
   }
   
   if (target.hp <= 0 && wasAlive) {
-    target.hp = 20;
+    target.hp = 50;
     target.effects.clear();
     syncEffects(target);
     broadcast('respawn', { id: targetId });
@@ -345,7 +345,7 @@ const magicCtx = {
   healPlayer(id, amount) {
     const q = players.get(id);
     if (!q || q.effects.has('curse')) return;
-    q.hp = Math.min(20, q.hp + amount);
+    q.hp = Math.min(50, q.hp + amount);
     broadcast('hp', { id, hp: q.hp });
   },
   clearDebuffs(id) {
@@ -410,7 +410,7 @@ const magicCtx = {
       }
       for (const [id, p] of players) {
         if (Math.hypot(p.x - x, p.z - z) < 3 && p.y > y-1 && p.y < y+2) {
-          p.hp = Math.min(20, p.hp + 2);
+          p.hp = Math.min(50, p.hp + 2);
           broadcast('hp', { id, hp: p.hp });
         }
       }
@@ -544,7 +544,7 @@ setInterval(() => {
     if (regen && now >= (regen.lastTick + 1000)) {
       regen.lastTick = now;
       if (!q.effects.has('curse')) {
-        q.hp = Math.min(20, q.hp + regen.power);
+        q.hp = Math.min(50, q.hp + regen.power);
         broadcast('hp', { id, hp: q.hp });
       }
     }
