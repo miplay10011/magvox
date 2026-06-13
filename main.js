@@ -29,6 +29,75 @@ scene.add(sun, new THREE.AmbientLight(0xffffff, 0.4));
 const statusEl = document.getElementById('status');
 const setStatus = s => statusEl.textContent = s;
 
+// ========== Настройки ==========
+const SENSITIVITY_KEY = 'voxel_sensitivity';
+let currentSens = parseFloat(localStorage.getItem(SENSITIVITY_KEY)) || 0.002;
+let SENS = currentSens;
+let settingsOpen = false;
+let settingsMenu = null;
+
+function createSettingsMenu() {
+    if (settingsMenu) return;
+    settingsMenu = document.createElement('div');
+    settingsMenu.id = 'settings-menu';
+    settingsMenu.style.cssText = `
+        position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        width: 300px; background: rgba(30,30,40,0.95); border: 2px solid #aaa;
+        border-radius: 8px; padding: 20px; color: white; font-family: monospace;
+        display: none; flex-direction: column; gap: 15px; z-index: 200;
+        backdrop-filter: blur(4px); box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    `;
+    const title = document.createElement('h3');
+    title.textContent = 'Настройки';
+    title.style.margin = '0 0 5px 0';
+    const sensLabel = document.createElement('label');
+    sensLabel.textContent = `Чувствительность мыши: ${(currentSens * 1000).toFixed(1)}`;
+    sensLabel.style.display = 'flex';
+    sensLabel.style.justifyContent = 'space-between';
+    sensLabel.style.alignItems = 'center';
+    const range = document.createElement('input');
+    range.type = 'range';
+    range.min = 0.5;
+    range.max = 5;
+    range.step = 0.05;
+    range.value = currentSens * 1000;
+    range.style.width = '150px';
+    range.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        currentSens = val / 1000;
+        SENS = currentSens;
+        localStorage.setItem(SENSITIVITY_KEY, currentSens);
+        sensLabel.childNodes[0].nodeValue = `Чувствительность мыши: ${val.toFixed(1)}`;
+    });
+    sensLabel.appendChild(range);
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = 'Закрыть (Esc)';
+    closeBtn.style.marginTop = '10px';
+    closeBtn.style.padding = '5px';
+    closeBtn.style.background = '#555';
+    closeBtn.style.border = 'none';
+    closeBtn.style.color = 'white';
+    closeBtn.style.cursor = 'pointer';
+    closeBtn.onclick = () => toggleSettings(false);
+    settingsMenu.append(title, sensLabel, closeBtn);
+    document.body.appendChild(settingsMenu);
+}
+
+function toggleSettings(open) {
+    settingsOpen = open;
+    if (!settingsMenu) return;
+    settingsMenu.style.display = open ? 'flex' : 'none';
+    if (open) {
+        if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
+        if (chatInput) chatInput.blur();
+        keys.clear();
+    } else {
+        if (!invOpen && document.pointerLockElement !== renderer.domElement && !chatFocused) {
+            renderer.domElement.requestPointerLock();
+        }
+    }
+}
+
 // ========== Партиклы ==========
 const MAX_P = 3000;
 const pGeo = new THREE.BufferGeometry();
@@ -85,7 +154,6 @@ const player = {
   flying: false,
 };
 let yaw = 0, pitch = 0;
-const SENS = 0.002;
 
 // ========== Мир + менеджер чанков ==========
 let world = null;
@@ -310,7 +378,8 @@ function updateTransients(dt) {
 // ========== Сеть ==========
 const SERVER_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
 let myId = null;
-const remotePlayers = new Map();
+let myNickname = '';
+const remotePlayers = new Map(); // id -> { mesh, target, yaw, nickname }
 const remoteGeo = new THREE.BoxGeometry(PLAYER.width, PLAYER.height, PLAYER.width);
 
 function addRemotePlayer(id, p) {
@@ -321,8 +390,8 @@ function addRemotePlayer(id, p) {
   const mesh = new THREE.Mesh(remoteGeo, mat);
   mesh.position.set(p.x, p.y + PLAYER.height / 2, p.z);
   scene.add(mesh);
-  remotePlayers.set(id, { mesh, target: new THREE.Vector3(p.x, p.y, p.z), yaw: p.yaw || 0 });
-  setStatus(`онлайн · игроков рядом: ${remotePlayers.size}`);
+  remotePlayers.set(id, { mesh, target: new THREE.Vector3(p.x, p.y, p.z), yaw: p.yaw || 0, nickname: p.nickname || `Player ${id}` });
+  setStatus(`онлайн · игроков: ${remotePlayers.size}`);
 }
 function removeRemotePlayer(id) {
   const rp = remotePlayers.get(id);
@@ -330,7 +399,7 @@ function removeRemotePlayer(id) {
   scene.remove(rp.mesh);
   rp.mesh.material.dispose();
   remotePlayers.delete(id);
-  setStatus(`онлайн · игроков рядом: ${remotePlayers.size}`);
+  setStatus(`онлайн · игроков: ${remotePlayers.size}`);
 }
 function updateRemotePlayers(dt) {
   const k = 1 - Math.pow(0.0001, dt);
@@ -344,7 +413,7 @@ function updateRemotePlayers(dt) {
 
 const net = new Network(SERVER_URL);
 
-// --- Общие игровые события (сервер онлайн / локальный движок оффлайн) ---
+// --- Общие игровые события ---
 const EVENTS = {
   blockUpdate: (m) => { if (world) world.setBlock(m.x, m.y, m.z, m.t).forEach(remeshChunk); },
   projSpawn: (m) => {
@@ -413,15 +482,16 @@ for (const [t, f] of Object.entries(EVENTS)) net.on(t, f);
 
 net.on('init', (m) => {
   myId = m.id;
+  myNickname = m.nickname;
   startWorld(m.seed, m.edits);
   for (const p of m.players) addRemotePlayer(p.id, p);
   if (m.snapshot) {
     for (const pr of m.snapshot.projectiles) EVENTS.projSpawn(pr);
     for (const mn of m.snapshot.mines) EVENTS.mineSpawn(mn);
   }
-  setStatus(`онлайн · игроков рядом: ${remotePlayers.size}`);
+  setStatus(`онлайн · игроков: ${remotePlayers.size}`);
 });
-net.on('join',  (m) => addRemotePlayer(m.id, { x: 0.5, y: 80, z: 0.5, yaw: 0 }));
+net.on('join',  (m) => addRemotePlayer(m.id, { x: 0.5, y: 80, z: 0.5, yaw: 0, nickname: m.nickname }));
 net.on('leave', (m) => removeRemotePlayer(m.id));
 net.on('move',  (m) => {
   const rp = remotePlayers.get(m.id);
@@ -455,11 +525,9 @@ net.on('respawn', (m) => {
   if (m.id !== myId) return;
   stats.hp = 20; renderStats();
   activeEffects.clear();
-  
   let attempts = 0;
   let foundSpot = false;
   let spawnX = 0, spawnZ = 0, spawnY = 0;
-  
   while (!foundSpot && attempts < 20) {
     const angle = Math.random() * Math.PI * 2;
     const radius = Math.random() * 100;
@@ -470,25 +538,16 @@ net.on('respawn', (m) => {
     const checkZ = Math.floor(spawnZ);
     let safe = true;
     for (let y = terrainY; y < terrainY + 2; y++) {
-      if (world.getBlock(checkX, y, checkZ) !== 0) {
-        safe = false;
-        break;
-      }
+      if (world.getBlock(checkX, y, checkZ) !== 0) { safe = false; break; }
     }
     const groundBlock = world.getBlock(checkX, terrainY - 1, checkZ);
-    if (safe && groundBlock !== 0 && terrainY > 0) {
-      spawnY = terrainY;
-      foundSpot = true;
-    }
+    if (safe && groundBlock !== 0 && terrainY > 0) { spawnY = terrainY; foundSpot = true; }
     attempts++;
   }
-  
   if (!foundSpot) {
-    spawnX = 0;
-    spawnZ = 0;
+    spawnX = 0; spawnZ = 0;
     spawnY = world.terrainHeight(0, 0);
   }
-  
   player.pos.set(spawnX + 0.5, spawnY, spawnZ + 0.5);
   player.vel.set(0, 0, 0);
   player.knock.set(0, 0, 0);
@@ -518,12 +577,13 @@ function addChatMessage(sender, message) {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-// Получение сообщений от сервера (другие игроки)
+// Получение сообщений от сервера
 net.on('chat', (msg) => {
-  addChatMessage(`Player ${msg.sender}`, msg.message);
+  const senderName = msg.senderId === myId ? 'You' : (msg.senderNick || `Player ${msg.senderId}`);
+  addChatMessage(senderName, msg.message);
 });
 
-// Отправка сообщений и локальное отображение
+// Обработка фокуса чата
 chatInput.addEventListener('focus', () => {
   chatFocused = true;
   keys.clear();
@@ -531,14 +591,28 @@ chatInput.addEventListener('focus', () => {
 chatInput.addEventListener('blur', () => {
   chatFocused = false;
 });
+
+// Отправка сообщений и локальное отображение
 chatInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter' && chatInput.value.trim()) {
     const message = chatInput.value.trim();
     net.send('chat', { message: message });
-    addChatMessage('You', message);   // ← ВАЖНО: локально добавляем своё сообщение
+    addChatMessage('You', message);
     chatInput.value = '';
   }
 });
+
+// Закрытие чата по Escape
+chatInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    chatInput.blur();
+    chatFocused = false;
+    e.preventDefault();
+  }
+});
+
+// Создание меню настроек
+createSettingsMenu();
 
 // ========== Оффлайн-магия ==========
 let localMagic = null;
@@ -612,6 +686,7 @@ renderer.domElement.addEventListener('click', () => {
 });
 document.addEventListener('mousemove', (e) => {
   if (document.pointerLockElement !== renderer.domElement) return;
+  if (settingsOpen) return;
   yaw   -= e.movementX * SENS;
   pitch -= e.movementY * SENS;
   const lim = Math.PI / 2 - 0.01;
@@ -620,7 +695,40 @@ document.addEventListener('mousemove', (e) => {
 
 const keys = new Set();
 document.addEventListener('keydown', (e) => {
+  // Открытие меню настроек
+  if (e.code === 'Tab') {
+    e.preventDefault();
+    toggleSettings(!settingsOpen);
+    return;
+  }
+  if (e.code === 'Escape' && settingsOpen) {
+    e.preventDefault();
+    toggleSettings(false);
+    return;
+  }
+  if (settingsOpen) return;
   if (chatFocused) return;
+
+  // Открытие чата
+  if (e.code === 'KeyT') {
+    chatInput.focus();
+    chatInput.value = '';
+    e.preventDefault();
+    return;
+  }
+  if (e.code === 'Slash') {
+    chatInput.focus();
+    chatInput.value = '/';
+    e.preventDefault();
+    return;
+  }
+  if (e.code === 'Enter') {
+    chatInput.focus();
+    chatInput.value = '';
+    e.preventDefault();
+    return;
+  }
+
   if (e.code === 'KeyE') { toggleInventory(); return; }
   if (invOpen) return;
   if (e.code === 'KeyQ') {
@@ -865,7 +973,7 @@ function toggleInventory() {
       for (let n = held.count; n > 0; n--) addItem(held.type);
       held = null;
     }
-    renderer.domElement.requestPointerLock();
+    if (!settingsOpen) renderer.domElement.requestPointerLock();
   }
   refreshUI();
 }
@@ -925,7 +1033,7 @@ function animate(now) {
     const ready = world.getChunk(
       Math.floor(player.pos.x / CHUNK_SIZE),
       Math.floor(player.pos.z / CHUNK_SIZE));
-    if (ready && !chatFocused) updatePlayer(dt);
+    if (ready && !chatFocused && !settingsOpen) updatePlayer(dt);
     updateRemotePlayers(dt);
 
     for (const pr of projectiles.values()) {
@@ -950,7 +1058,7 @@ function animate(now) {
     updateParticles(dt);
     syncPosition(now);
     renderEffects(now);
-    updateCoordDisplay();  // Обновление координат в каждом кадре
+    updateCoordDisplay();
   }
   renderer.render(scene, camera);
 }

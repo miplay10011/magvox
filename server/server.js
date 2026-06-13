@@ -2,7 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { WebSocketServer } from 'ws'; // WebSocket не импортируем отдельно, будем использовать константу 1
+import { WebSocketServer } from 'ws';
 import { createMagicEngine } from '../magic.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -18,6 +18,16 @@ const httpServer = http.createServer((req, res) => {
     res.end(data);
   });
 });
+
+// ===== Генерация случайного ника =====
+const ADJECTIVES = ["Весёлый", "Храбрый", "Тихий", "Быстрый", "Умный", "Смелый", "Добрый", "Злой", "Магический", "Ледяной", "Огненный", "Тёмный", "Светлый", "Летающий", "Подземный", "Древний", "Могучий"];
+const NOUNS = ["Волшебник", "Маг", "Чародей", "Колдун", "Шаман", "Друид", "Некромант", "Иллюзионист", "Алхимик", "Варлок", "Магистр", "Архимаг", "Мистик", "Заклинатель"];
+function randomNickname() {
+    const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+    const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
+    const num = Math.floor(Math.random() * 1000);
+    return `${adj}${noun}${num}`;
+}
 
 // ===== Шум Перлина =====
 const PERM = [151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,190,6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,88,237,149,56,87,174,20,125,136,171,168,68,175,74,165,71,134,139,48,27,166,77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,102,143,54,65,25,63,161,1,216,80,73,209,76,132,187,208,89,18,169,200,196,135,130,116,188,159,86,164,100,109,198,173,186,3,64,52,217,226,250,124,123,5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,223,183,170,213,119,248,152,2,44,154,163,70,221,153,101,155,167,43,172,9,129,22,39,253,19,98,108,110,79,113,224,232,178,185,112,104,218,246,97,228,251,34,242,193,238,210,144,12,191,179,162,241,81,51,145,235,249,14,239,107,49,192,214,31,181,199,106,157,184,84,204,176,115,121,50,45,127,4,150,254,138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180];
@@ -42,7 +52,7 @@ function noise(x, y, z) {
     lerp(v, lerp(u, grad(p[AA + 1], x, y, z - 1), grad(p[BA + 1], x - 1, y, z - 1)),
             lerp(u, grad(p[AB + 1], x, y - 1, z - 1), grad(p[BB + 1], x - 1, y - 1, z - 1))));
 }
-let seed; // объявим позже, но функция terrainHeight использует seed — будет замыкание
+let seed;
 function terrainHeight(wx, wz) {
   let h = 24;
   h += noise(wx / 80 + seed, wz / 80 + seed, 0) * 16;
@@ -54,17 +64,15 @@ function terrainHeight(wx, wz) {
 // ===== Состояние =====
 seed = Math.floor(Math.random() * 10000);
 const edits = new Map();
-const players = new Map();
+const players = new Map(); // id -> { ws, x, y, z, yaw, hp, armor, mana, lastAttack, effects, nickname }
 let nextId = 1;
 
 const wss = new WebSocketServer({ server: httpServer });
 
-// Единая функция отправки
 function send(ws, type, data) {
   if (ws.readyState === 1) ws.send(JSON.stringify({ type, ...data }));
 }
 
-// Единая рассылка (exceptId — кому не отправлять)
 function broadcast(type, data, exceptId = null) {
   const msg = JSON.stringify({ type, ...data });
   for (const [id, q] of players) {
@@ -180,18 +188,20 @@ setInterval(() => {
 // ===== Подключения =====
 wss.on('connection', (ws) => {
   const id = nextId++;
+  const nickname = randomNickname();
   players.set(id, {
-    id, ws, x: 0.5, y: 80, z: 0.5, yaw: 0,
+    id, ws, nickname,
+    x: 0.5, y: 80, z: 0.5, yaw: 0,
     hp: 20, armor: 0, mana: 20, lastAttack: 0, effects: new Map(),
   });
-  console.log(`+ Игрок ${id} (всего: ${players.size})`);
+  console.log(`+ ${nickname} (id ${id}) · всего: ${players.size}`);
   send(ws, 'init', {
-    id, seed, edits: [...edits],
+    id, nickname, seed, edits: [...edits],
     snapshot: magic.getSnapshot(),
     players: [...players].filter(([pid]) => pid !== id)
-      .map(([pid, q]) => ({ id: pid, x: q.x, y: q.y, z: q.z, yaw: q.yaw })),
+      .map(([pid, q]) => ({ id: pid, nickname: q.nickname, x: q.x, y: q.y, z: q.z, yaw: q.yaw })),
   });
-  broadcast('join', { id }, id);
+  broadcast('join', { id, nickname }, id);
 
   ws.on('message', (raw) => {
     let msg;
@@ -214,14 +224,14 @@ wss.on('connection', (ws) => {
     } else if (msg.type === 'cast') {
       magic.cast(id, msg.elements, msg.dir, { x: q.x, y: q.y + 1.62, z: q.z }, q.yaw);
     } else if (msg.type === 'chat') {
-      broadcast('chat', { sender: id, message: msg.message }, id);
+      broadcast('chat', { senderId: id, senderNick: q.nickname, message: msg.message }, id);
     }
   });
 
   ws.on('close', () => {
     players.delete(id);
     broadcast('leave', { id });
-    console.log(`- Игрок ${id} (всего: ${players.size})`);
+    console.log(`- ${nickname} (id ${id}) · всего: ${players.size}`);
   });
 });
 
