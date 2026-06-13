@@ -577,6 +577,44 @@ function addChatMessage(sender, message) {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
+// Самоубийство
+function suicide() {
+  stats.hp = 0;
+  renderStats();
+  damageFlash();
+  // Локальный респавн (аналогично серверному)
+  stats.hp = 20;
+  activeEffects.clear();
+  renderStats();
+  let attempts = 0;
+  let foundSpot = false;
+  let spawnX = 0, spawnZ = 0, spawnY = 0;
+  while (!foundSpot && attempts < 20) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = Math.random() * 100;
+    spawnX = Math.cos(angle) * radius;
+    spawnZ = Math.sin(angle) * radius;
+    const terrainY = world.terrainHeight(spawnX, spawnZ);
+    const checkX = Math.floor(spawnX);
+    const checkZ = Math.floor(spawnZ);
+    let safe = true;
+    for (let y = terrainY; y < terrainY + 2; y++) {
+      if (world.getBlock(checkX, y, checkZ) !== 0) { safe = false; break; }
+    }
+    const groundBlock = world.getBlock(checkX, terrainY - 1, checkZ);
+    if (safe && groundBlock !== 0 && terrainY > 0) { spawnY = terrainY; foundSpot = true; }
+    attempts++;
+  }
+  if (!foundSpot) {
+    spawnX = 0; spawnZ = 0;
+    spawnY = world.terrainHeight(0, 0);
+  }
+  player.pos.set(spawnX + 0.5, spawnY, spawnZ + 0.5);
+  player.vel.set(0, 0, 0);
+  player.knock.set(0, 0, 0);
+  addChatMessage('Система', 'Вы совершили самоубийство');
+}
+
 // Получение сообщений от сервера
 net.on('chat', (msg) => {
   const senderName = msg.senderId === myId ? 'You' : (msg.senderNick || `Player ${msg.senderId}`);
@@ -592,13 +630,26 @@ chatInput.addEventListener('blur', () => {
   chatFocused = false;
 });
 
-// Отправка сообщений и локальное отображение
+// Отправка сообщений и локальное отображение (с поддержкой команд)
 chatInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter' && chatInput.value.trim()) {
-    const message = chatInput.value.trim();
+    let message = chatInput.value.trim();
+    // Проверяем команды
+    if (message.startsWith('/')) {
+      if (message === '/kill') {
+        suicide();
+      } else {
+        addChatMessage('Система', `Неизвестная команда: ${message}`);
+      }
+      chatInput.value = '';
+      chatInput.blur();
+      return;
+    }
+    // Обычное сообщение
     net.send('chat', { message: message });
     addChatMessage('You', message);
     chatInput.value = '';
+    chatInput.blur(); // закрываем чат после отправки
   }
 });
 
@@ -750,7 +801,7 @@ document.addEventListener('wheel', (e) => {
   refreshUI();
 });
 
-// ========== Физика ==========
+// ========== Физика с разрешением застревания ==========
 function moveAxis(dt, axis) {
   player.pos[axis] += player.vel[axis] * dt;
   const half = PLAYER.width / 2, E = 1e-4;
@@ -773,6 +824,60 @@ function moveAxis(dt, axis) {
         player.vel[axis] = 0;
         return;
       }
+}
+
+function resolveBlockStuck() {
+  const half = PLAYER.width / 2;
+  const minX = Math.floor(player.pos.x - half);
+  const maxX = Math.floor(player.pos.x + half);
+  const minZ = Math.floor(player.pos.z - half);
+  const maxZ = Math.floor(player.pos.z + half);
+  const feetY = Math.floor(player.pos.y);
+  const headY = Math.floor(player.pos.y + PLAYER.height - 0.2);
+
+  // Проверяем, есть ли блок внутри тела игрока
+  let stuck = false;
+  for (let y = feetY; y <= headY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      for (let z = minZ; z <= maxZ; z++) {
+        if (world.getBlock(x, y, z) !== AIR) {
+          stuck = true;
+          break;
+        }
+      }
+    }
+  }
+  if (!stuck) return;
+
+  // Поиск ближайшего пустого места в радиусе 5 блоков
+  const radius = 5;
+  let bestDist = Infinity;
+  let bestPos = null;
+
+  for (let dx = -radius; dx <= radius; dx++) {
+    for (let dz = -radius; dz <= radius; dz++) {
+      const nx = Math.floor(player.pos.x + dx);
+      const nz = Math.floor(player.pos.z + dz);
+      const groundY = world.terrainHeight(nx, nz);
+      if (world.getBlock(nx, groundY + 1, nz) === AIR &&
+          world.getBlock(nx, groundY + 2, nz) === AIR &&
+          world.getBlock(nx, groundY, nz) !== AIR) {
+        const dist = dx * dx + dz * dz;
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestPos = { x: nx + 0.5, y: groundY + 1, z: nz + 0.5 };
+        }
+      }
+    }
+  }
+
+  if (bestPos) {
+    player.pos.set(bestPos.x, bestPos.y, bestPos.z);
+    player.vel.set(0, 0, 0);
+    player.knock.set(0, 0, 0);
+  } else {
+    player.pos.y += 1;
+  }
 }
 
 function updatePlayer(dt) {
@@ -821,6 +926,7 @@ function updatePlayer(dt) {
     player.vel.set(0, 0, 0);
     player.knock.set(0, 0, 0);
   }
+  resolveBlockStuck();
   camera.position.set(player.pos.x, player.pos.y + PLAYER.eye, player.pos.z);
 }
 
