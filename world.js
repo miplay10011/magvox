@@ -287,53 +287,72 @@ export function buildChunkMesh(world, chunk) {
 
 // ---------- LOD меш с поддержкой биомов ----------
 export function buildLODMesh(world, gx, gz, level) {
-  const step = 1 << level, n = CHUNK_SIZE, size = n * step;
-  const ox = gx * size, oz = gz * size;
-  const W = n + 2;
+  const step = 1 << level;
+  const n = CHUNK_SIZE;
+  const size = n * step;
+  // Смещение на 1 шаг влево/вверх для перекрытия границ
+  const ox = gx * size - step;
+  const oz = gz * size - step;
+  const W = n + 3; // +2 для перекрытия, +1 для индексации (итого +3)
   const H = new Int16Array(W * W);
-  for (let j = -1; j <= n; j++)
-    for (let i = -1; i <= n; i++)
-      H[(i+1)+(j+1)*W] = world.terrainHeight(ox + i*step, oz + j*step);
-  const h = (i,j) => H[(i+1)+(j+1)*W];
+  for (let j = -1; j <= n; j++) {
+    for (let i = -1; i <= n; i++) {
+      const wx = ox + (i + 1) * step;
+      const wz = oz + (j + 1) * step;
+      H[(i + 1) + (j + 1) * W] = world.terrainHeight(wx, wz);
+    }
+  }
+  const h = (i, j) => H[(i + 1) + (j + 1) * W];
 
   const positions = [], normals = [], colors = [], indices = [];
   const Y_OFF = -0.05;
   function quad(verts, normal, c) {
-    const base = positions.length/3;
-    for (const [x,y,z] of verts) {
-      positions.push(x, y+Y_OFF, z); normals.push(...normal); colors.push(c.r,c.g,c.b);
+    const base = positions.length / 3;
+    for (const [x, y, z] of verts) {
+      positions.push(x, y + Y_OFF, z);
+      normals.push(...normal);
+      colors.push(c.r, c.g, c.b);
     }
-    indices.push(base, base+1, base+2, base, base+2, base+3);
+    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
+
   const dirt = BLOCK_COLORS[DIRT];
   const stone = BLOCK_COLORS[STONE];
 
-  for (let j = 0; j < n; j++)
+  for (let j = 0; j < n; j++) {
     for (let i = 0; i < n; i++) {
-      const y = h(i,j);
-      const x0 = ox + i*step, z0 = oz + j*step, x1 = x0+step, z1 = z0+step;
-      const biome = world.getBiome(x0, z0);
+      const y = h(i, j);
+      const x0 = ox + (i + 1) * step;
+      const z0 = oz + (j + 1) * step;
+      const x1 = x0 + step;
+      const z1 = z0 + step;
+
+      const biome = world.getBiome(x0 + step / 2, z0 + step / 2);
       let surfaceType = GRASS;
       if (biome === 'desert') surfaceType = SAND;
       else if (biome === 'mountain') surfaceType = STONE;
       const topColor = BLOCK_COLORS[surfaceType];
-      
-      quad([[x0,y,z1],[x1,y,z1],[x1,y,z0],[x0,y,z0]], [0,1,0], topColor);
-      
+
+      quad([[x0, y, z1], [x1, y, z1], [x1, y, z0], [x0, y, z0]], [0, 1, 0], topColor);
+
       const walls = [
-        [h(i+1,j), [1,0,0], (a,b) => [[x1,a,z0],[x1,b,z0],[x1,b,z1],[x1,a,z1]]],
-        [h(i-1,j), [-1,0,0], (a,b) => [[x0,a,z1],[x0,b,z1],[x0,b,z0],[x0,a,z0]]],
-        [h(i,j+1), [0,0,1], (a,b) => [[x0,a,z1],[x1,a,z1],[x1,b,z1],[x0,b,z1]]],
-        [h(i,j-1), [0,0,-1], (a,b) => [[x1,a,z0],[x0,a,z0],[x0,b,z0],[x1,b,z0]]],
+        [h(i + 1, j), [1, 0, 0], (a, b) => [[x1, a, z0], [x1, b, z0], [x1, b, z1], [x1, a, z1]]],
+        [h(i - 1, j), [-1, 0, 0], (a, b) => [[x0, a, z1], [x0, b, z1], [x0, b, z0], [x0, a, z0]]],
+        [h(i, j + 1), [0, 0, 1], (a, b) => [[x0, a, z1], [x1, a, z1], [x1, b, z1], [x0, b, z1]]],
+        [h(i, j - 1), [0, 0, -1], (a, b) => [[x1, a, z0], [x0, a, z0], [x0, b, z0], [x1, b, z0]]],
       ];
-      for (const [hn, dir, make] of walls)
-        if (hn < y) quad(make(hn, y), dir, (y-hn) <= 4 ? dirt : stone);
+      for (const [hn, dir, make] of walls) {
+        if (hn < y) {
+          quad(make(hn, y), dir, (y - hn) <= 4 ? dirt : stone);
+        }
+      }
     }
+  }
 
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute('normal',   new THREE.Float32BufferAttribute(normals, 3));
-  geo.setAttribute('color',    new THREE.Float32BufferAttribute(colors, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geo.setIndex(indices);
   return new THREE.Mesh(geo, CHUNK_MATERIAL);
 }
