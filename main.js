@@ -4,7 +4,6 @@ import { World, buildChunkMesh, buildLODMesh, AIR, BLOCK_COLORS, CHUNK_SIZE,
 import { Network } from './network.js';
 import { createMagicEngine } from './magic.js';
 import { initParticles, spawnParticles, updateParticles } from './particles.js';
-import { initInventory, toggleInventory, addItem, refreshUI, selectedSlot, inventory, held, invOpen, clickSlot } from './inventory.js';
 
 // ========== Рендер ==========
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -13,7 +12,7 @@ renderer.setPixelRatio(devicePixelRatio);
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-initParticles(scene);   // <-- добавьте эту строку сразу после создания scene
+initParticles(scene);
 scene.background = new THREE.Color(0x87ceeb);
 scene.fog = new THREE.Fog(0x87ceeb, 400, 1400);
 
