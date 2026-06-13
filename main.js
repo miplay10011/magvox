@@ -380,25 +380,81 @@ function updateTransients(dt) {
 const SERVER_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
 let myId = null;
 let myNickname = '';
-const remotePlayers = new Map(); // id -> { mesh, target, yaw, nickname }
+const remotePlayers = new Map(); // id -> { group, target, yaw, nickname }
 const remoteGeo = new THREE.BoxGeometry(PLAYER.width, PLAYER.height, PLAYER.width);
+
+// Функция создания модели игрока (голова, шея, торс, руки, ноги) + невидимый хитбокс
+function createPlayerModel(color) {
+  const group = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.1 });
+  
+  // Торс верх (грудь)
+  const chestGeo = new THREE.BoxGeometry(0.6, 0.5, 0.3);
+  const chest = new THREE.Mesh(chestGeo, mat);
+  chest.position.set(0, 0.6, 0);
+  group.add(chest);
+  
+  // Торс низ (таз)
+  const pelvisGeo = new THREE.BoxGeometry(0.5, 0.4, 0.3);
+  const pelvis = new THREE.Mesh(pelvisGeo, mat);
+  pelvis.position.set(0, 0.2, 0);
+  group.add(pelvis);
+  
+  // Голова
+  const headGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+  const head = new THREE.Mesh(headGeo, mat);
+  head.position.set(0, 0.95, 0);
+  group.add(head);
+  
+  // Шея
+  const neckGeo = new THREE.BoxGeometry(0.3, 0.2, 0.2);
+  const neck = new THREE.Mesh(neckGeo, mat);
+  neck.position.set(0, 0.75, 0);
+  group.add(neck);
+  
+  // Руки
+  const armGeo = new THREE.BoxGeometry(0.4, 0.7, 0.3);
+  const leftArm = new THREE.Mesh(armGeo, mat);
+  leftArm.position.set(-0.55, 0.7, 0);
+  group.add(leftArm);
+  const rightArm = new THREE.Mesh(armGeo, mat);
+  rightArm.position.set(0.55, 0.7, 0);
+  group.add(rightArm);
+  
+  // Ноги
+  const legGeo = new THREE.BoxGeometry(0.4, 0.7, 0.3);
+  const leftLeg = new THREE.Mesh(legGeo, mat);
+  leftLeg.position.set(-0.3, -0.3, 0);
+  group.add(leftLeg);
+  const rightLeg = new THREE.Mesh(legGeo, mat);
+  rightLeg.position.set(0.3, -0.3, 0);
+  group.add(rightLeg);
+  
+  // Невидимый хитбокс (для коллизий и рейкаста)
+  const hitboxGeo = new THREE.BoxGeometry(PLAYER.width, PLAYER.height, PLAYER.width);
+  const hitboxMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, visible: true });
+  const hitbox = new THREE.Mesh(hitboxGeo, hitboxMat);
+  hitbox.position.set(0, PLAYER.height / 2, 0);
+  group.add(hitbox);
+  
+  return group;
+}
 
 function addRemotePlayer(id, p) {
   if (id === myId || remotePlayers.has(id)) return;
-  const mat = new THREE.MeshLambertMaterial({
-    color: new THREE.Color().setHSL((id * 0.61) % 1, 0.7, 0.5),
-  });
-  const mesh = new THREE.Mesh(remoteGeo, mat);
-  mesh.position.set(p.x, p.y + PLAYER.height / 2, p.z);
-  scene.add(mesh);
-  remotePlayers.set(id, { mesh, target: new THREE.Vector3(p.x, p.y, p.z), yaw: p.yaw || 0, nickname: p.nickname || `Player ${id}` });
+  const hue = (id * 0.61) % 1;
+  const color = new THREE.Color().setHSL(hue, 0.7, 0.5);
+  const group = createPlayerModel(color);
+  group.position.set(p.x, p.y, p.z);
+  scene.add(group);
+  remotePlayers.set(id, { group, target: new THREE.Vector3(p.x, p.y, p.z), yaw: p.yaw || 0, nickname: p.nickname || `Player ${id}` });
   setStatus(`онлайн · игроков: ${remotePlayers.size}`);
 }
 function removeRemotePlayer(id) {
   const rp = remotePlayers.get(id);
   if (!rp) return;
-  scene.remove(rp.mesh);
-  rp.mesh.material.dispose();
+  scene.remove(rp.group);
+  // диспоуз материалов/геометрий (опционально, но для простоты пропустим)
   remotePlayers.delete(id);
   setStatus(`онлайн · игроков: ${remotePlayers.size}`);
 }
@@ -406,9 +462,9 @@ function updateRemotePlayers(dt) {
   const k = 1 - Math.pow(0.0001, dt);
   const tmp = new THREE.Vector3();
   for (const rp of remotePlayers.values()) {
-    tmp.set(rp.target.x, rp.target.y + PLAYER.height / 2, rp.target.z);
-    rp.mesh.position.lerp(tmp, k);
-    rp.mesh.rotation.y += (rp.yaw - rp.mesh.rotation.y) * k;
+    tmp.set(rp.target.x, rp.target.y, rp.target.z);
+    rp.group.position.lerp(tmp, k);
+    rp.group.rotation.y += (rp.yaw - rp.group.rotation.y) * k;
   }
 }
 
@@ -503,8 +559,11 @@ net.on('hp', (m) => {
   else {
     const rp = remotePlayers.get(m.id);
     if (rp) {
-      rp.mesh.material.emissive = new THREE.Color(0xff0000);
-      setTimeout(() => rp.mesh.material.emissive.setHex(0x000000), 150);
+      // временная подсветка (можно добавить материал, но пока пропустим)
+      // rp.group.children.forEach(c => { if (c.material) c.material.emissive = new THREE.Color(0xff0000); });
+      setTimeout(() => {
+        // if (rp) rp.group.children.forEach(c => { if (c.material) c.material.emissive.setHex(0x000000); });
+      }, 150);
     }
   }
 });
@@ -955,9 +1014,11 @@ function raycastPlayers(maxDist) {
   playerRaycaster.far = maxDist;
   let best = null;
   for (const [id, rp] of remotePlayers) {
-    const hits = playerRaycaster.intersectObject(rp.mesh);
-    if (hits.length && (!best || hits[0].distance < best.dist))
+    // Рейкастим по всей группе, но хитбокс невидим, но участвует в рейкасте (прозрачный, но visible=true)
+    const hits = playerRaycaster.intersectObject(rp.group, true);
+    if (hits.length && (!best || hits[0].distance < best.dist)) {
       best = { id, dist: hits[0].distance };
+    }
   }
   return best;
 }
@@ -970,7 +1031,7 @@ function intersectsPlayer(bx, by, bz) {
 }
 
 // ========== Инвентарь ==========
-const INV_SIZE = 37; // 0..35 обычные, 36 синий слот
+const INV_SIZE = 37;
 const inventory = new Array(INV_SIZE).fill(null);
 let selectedSlot = 0, held = null, invOpen = false;
 
@@ -1014,7 +1075,6 @@ function makeInvSlot(index, container) {
 for (let i = 9; i < 36; i++) makeInvSlot(i, document.getElementById('inv-main'));
 for (let i = 0; i < 9; i++)  makeInvSlot(i, document.getElementById('inv-hotbar-row'));
 
-// Обработчик для синего слота (индекс 36)
 const recycleSlotDiv = document.getElementById('recycle-slot');
 if (recycleSlotDiv) {
   recycleSlotDiv.addEventListener('mousedown', (e) => {
@@ -1063,7 +1123,6 @@ function refreshUI() {
     hudSlots[i].classList.toggle('selected', i === selectedSlot);
   }
   for (let i = 0; i < 36; i++) renderSlot(invSlots[i], inventory[i]);
-  // Синий слот
   if (recycleSlotDiv) renderSlot(recycleSlotDiv, inventory[36]);
   heldEl.style.display = held ? 'block' : 'none';
   if (held) {
@@ -1073,11 +1132,9 @@ function refreshUI() {
 }
 refreshUI();
 
-// Функция переработки (превращает блок в синем слоте в случайный)
 const ALL_BLOCK_TYPES = [GRASS, DIRT, STONE, WOOD, LEAVES, PLANKS, SAND, GRAVEL, COAL_ORE, IRON_ORE];
 function recycleItem() {
-  const slotIndex = 36;
-  const slot = inventory[slotIndex];
+  const slot = inventory[36];
   if (!slot) {
     addChatMessage('Система', 'Положите блок в синий слот, чтобы переработать');
     return;
@@ -1091,7 +1148,6 @@ function recycleItem() {
   addChatMessage('Система', `Предмет превращён в ${Object.keys(BLOCK_COLORS)[newType] || 'блок'}!`);
 }
 
-// Кнопка переработки
 const recycleBtn = document.getElementById('recycle-button');
 if (recycleBtn) {
   recycleBtn.addEventListener('click', () => recycleItem());
