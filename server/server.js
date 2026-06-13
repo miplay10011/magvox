@@ -260,7 +260,7 @@ function applyDamage(targetId, dmg, src = {}) {
     target.effects.clear();
     syncEffects(target);
     broadcast('respawn', { id: targetId });
-    broadcast('hp', { id: targetId, hp: 20 });
+    broadcast('hp', { id: targetId, hp: 50 });
     target.phoenixUsed = false;
     if (attackerId && attackerId !== targetId && attacker) {
       const killMsg = `${attacker.nickname} убил ${target.nickname} с помощью ${weapon}`;
@@ -618,7 +618,7 @@ wss.on('connection', (ws) => {
   players.set(id, {
     id, ws, nickname,
     x: 0.5, y: 80, z: 0.5, yaw: 0,
-    hp: 20, armor: 0, mana: 20, lastAttack: 0, effects: new Map(),
+    hp: 50, armor: 0, mana: 20, lastAttack: 0, effects: new Map(),
     phoenixUsed: false,
   });
   console.log(`+ ${nickname} (id ${id}) · всего: ${players.size}`);
