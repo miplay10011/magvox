@@ -595,17 +595,45 @@ function animate(now) {
 }
 
 // Инициализация
+// ========== Инициализация (исправленная) ==========
 function init() {
   initRender();
   initUI();
   initInventory();
   initRemotePlayers();
   initMagicUI();
-  initNetwork();
-  setPlayerWorld(worldRef);
-  // startWorld будет вызван из net.on('init') при подключении
-  // для офлайн-режима запустим мир, только если нет соединения
-  if (!net.connected) startWorld(Math.random() * 10000, []);
+  initNetwork();  // здесь создаётся WebSocket, но connected станет true только после onopen
+  
+  setPlayerWorld(worldRef); // пока worldRef = null, но позже обновится
+
+  // Не запускаем мир сразу – ждём либо init от сервера, либо таймаут
+  let offlineTimeout = setTimeout(() => {
+    if (!net.connected && !worldRef) {
+      console.log("Нет подключения к серверу, запуск офлайн-мира");
+      startWorld(Math.random() * 10000, []);
+      setStatus('оффлайн (одиночная игра)');
+    }
+  }, 3000);
+
+  // Если сервер ответил – отменяем таймаут
+  const originalInitHandler = net.on('init');
+  net.on('init', (m) => {
+    clearTimeout(offlineTimeout);
+    setMyId(m.id);
+    setMyNickname(m.nickname);
+    startWorld(m.seed, m.edits);
+    for (const p of m.players) addRemotePlayer(p.id, p);
+    if (m.snapshot) {
+      for (const pr of m.snapshot.projectiles) EVENTS.projSpawn(pr);
+      for (const mn of m.snapshot.mines) EVENTS.mineSpawn(mn);
+    }
+    if (m.zones) m.zones.forEach(z => EVENTS.zoneSpawn(z));
+    if (m.timeSlowZones) m.timeSlowZones.forEach(z => EVENTS.timeSlowZone(z));
+    setStatus(`онлайн · игроков: ${remotePlayers.size}`);
+    // вызываем старый обработчик, если он был
+    if (originalInitHandler) originalInitHandler(m);
+  });
+
   requestAnimationFrame(animate);
   window.suicide = suicide;
   window.toggleFly = toggleFly;

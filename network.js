@@ -1,3 +1,10 @@
+export let net = null;
+export let myId = null;
+export let myNickname = '';
+
+export function setMyId(id) { myId = id; }
+export function setMyNickname(name) { myNickname = name; }
+
 export class Network {
   constructor(url) {
     this.handlers = {};
@@ -12,4 +19,9 @@ export class Network {
   send(type, data) {
     if (this.ws.readyState === 1) this.ws.send(JSON.stringify({ type, ...data }));
   }
+}
+
+export function initNetwork() {
+  const SERVER_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
+  net = new Network(SERVER_URL);
 }
