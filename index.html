@@ -43,10 +43,28 @@
     }
     #inventory.open { display: flex; }
     #inv-panel { background: #c6c6c6; padding: 14px; border: 3px solid #555; border-radius: 4px; }
-    #inv-panel .inv-grid { display: grid; grid-template-columns: repeat(9, 48px); gap: 4px; }
+    #inv-panel .inv-grid { display: grid; grid-template-columns: repeat(9, 48px); gap: 4px; margin-bottom: 8px; }
     #inv-panel .slot { pointer-events: auto; cursor: pointer; background: #8b8b8b; }
     #inv-panel .slot:hover { background: #a8a8a8; }
-    #inv-hotbar-row { margin-top: 16px; }
+    /* Специальный слот переработки */
+    .recycle-slot {
+      background: #2a6f8f !important;
+      border: 2px solid #00aaff !important;
+    }
+    .recycle-button {
+      width: 48px; height: 48px;
+      background: #444; border: 2px solid #ddd;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 28px;
+      cursor: pointer;
+      transition: 0.1s;
+    }
+    .recycle-button:hover { background: #666; transform: scale(1.02); }
+    #inv-craft-row {
+      display: flex; gap: 16px; align-items: center; justify-content: center;
+      margin-bottom: 16px;
+    }
     #held-item {
       position: fixed; width: 36px; height: 36px;
       pointer-events: none; display: none; z-index: 10; border-radius: 2px;
@@ -96,7 +114,6 @@
       position: absolute; left: 10px; top: 45%; color: #fff;
       font: 13px monospace; text-shadow: 1px 1px 0 #000; pointer-events: none;
     }
-    /* Координаты и чат */
     #coord-display {
       position: absolute; bottom: 10px; left: 10px;
       color: white; background: rgba(0,0,0,0.5); padding: 5px;
@@ -125,7 +142,7 @@
 </head>
 <body>
   <div id="hud">Клик — мышь · WASD · Space · E инвентарь · Q бой/стройка ·
-    бой: 1–9 элементы, ЛКМ каст, ПКМ убрать, X сброс · Tab настройки · T, /, Enter чат · /fly полёт · /kill смерть</div>
+    бой: 1–9 элементы, ЛКМ каст, ПКМ убрать, X сброс · Tab настройки · T, /, Enter чат · /fly полёт</div>
   <div id="status">подключение…</div>
   <div id="crosshair">+</div>
   <div id="magic-ring"></div>
@@ -138,6 +155,11 @@
   <div id="hotbar"></div>
   <div id="inventory">
     <div id="inv-panel">
+      <!-- Новый ряд: синий слот и кнопка переработки -->
+      <div id="inv-craft-row">
+        <div id="recycle-slot" class="slot recycle-slot" data-index="36"></div>
+        <div id="recycle-button" class="recycle-button" title="Переработать блок">♻️</div>
+      </div>
       <div class="inv-grid" id="inv-main"></div>
       <div class="inv-grid" id="inv-hotbar-row"></div>
     </div>

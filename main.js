@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { World, buildChunkMesh, buildLODMesh, AIR, BLOCK_COLORS, CHUNK_SIZE } from './world.js';
+import { World, buildChunkMesh, buildLODMesh, AIR, BLOCK_COLORS, CHUNK_SIZE,
+         GRASS, DIRT, STONE, WOOD, LEAVES, PLANKS, SAND, GRAVEL, COAL_ORE, IRON_ORE } from './world.js';
 import { Network } from './network.js';
 import { createMagicEngine } from './magic.js';
 
@@ -763,7 +764,6 @@ document.addEventListener('keydown', (e) => {
   if (settingsOpen) return;
   if (chatFocused) return;
 
-  // Открытие чата
   if (e.code === 'KeyT') {
     chatInput.focus();
     chatInput.value = '';
@@ -788,7 +788,6 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.code === 'KeyX' && combatMode) { spellQueue.length = 0; refreshQueueUI(); return; }
   keys.add(e.code);
-  // Клавиша F больше не включает полёт
   if (e.code.startsWith('Digit')) {
     const n = +e.code.slice(5);
     if (n >= 1 && n <= 9) {
@@ -971,7 +970,7 @@ function intersectsPlayer(bx, by, bz) {
 }
 
 // ========== Инвентарь ==========
-const INV_SIZE = 36;
+const INV_SIZE = 37; // 0..35 обычные, 36 синий слот
 const inventory = new Array(INV_SIZE).fill(null);
 let selectedSlot = 0, held = null, invOpen = false;
 
@@ -1015,6 +1014,15 @@ function makeInvSlot(index, container) {
 for (let i = 9; i < 36; i++) makeInvSlot(i, document.getElementById('inv-main'));
 for (let i = 0; i < 9; i++)  makeInvSlot(i, document.getElementById('inv-hotbar-row'));
 
+// Обработчик для синего слота (индекс 36)
+const recycleSlotDiv = document.getElementById('recycle-slot');
+if (recycleSlotDiv) {
+  recycleSlotDiv.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    clickSlot(36, e.button);
+  });
+}
+
 function clickSlot(i, button) {
   const slot = inventory[i];
   if (button === 0) {
@@ -1055,6 +1063,8 @@ function refreshUI() {
     hudSlots[i].classList.toggle('selected', i === selectedSlot);
   }
   for (let i = 0; i < 36; i++) renderSlot(invSlots[i], inventory[i]);
+  // Синий слот
+  if (recycleSlotDiv) renderSlot(recycleSlotDiv, inventory[36]);
   heldEl.style.display = held ? 'block' : 'none';
   if (held) {
     heldEl.style.background = '#' + BLOCK_COLORS[held.type].getHexString();
@@ -1062,6 +1072,30 @@ function refreshUI() {
   }
 }
 refreshUI();
+
+// Функция переработки (превращает блок в синем слоте в случайный)
+const ALL_BLOCK_TYPES = [GRASS, DIRT, STONE, WOOD, LEAVES, PLANKS, SAND, GRAVEL, COAL_ORE, IRON_ORE];
+function recycleItem() {
+  const slotIndex = 36;
+  const slot = inventory[slotIndex];
+  if (!slot) {
+    addChatMessage('Система', 'Положите блок в синий слот, чтобы переработать');
+    return;
+  }
+  const newType = ALL_BLOCK_TYPES[Math.floor(Math.random() * ALL_BLOCK_TYPES.length)];
+  slot.type = newType;
+  slot.count = 1;
+  refreshUI();
+  const pos = player.pos;
+  spawnParticles(pos.x, pos.y + 1, pos.z, BLOCK_COLORS[newType].getHex(), 30, 2.5, 1.2);
+  addChatMessage('Система', `Предмет превращён в ${Object.keys(BLOCK_COLORS)[newType] || 'блок'}!`);
+}
+
+// Кнопка переработки
+const recycleBtn = document.getElementById('recycle-button');
+if (recycleBtn) {
+  recycleBtn.addEventListener('click', () => recycleItem());
+}
 
 function toggleInventory() {
   invOpen = !invOpen;
