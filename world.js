@@ -29,15 +29,36 @@ export const BLOCK_COLORS = {
 };
 export const CHUNK_MATERIAL = new THREE.MeshLambertMaterial({ vertexColors: true });
 
+// ---- Битовая упаковка блоков (4 бита на блок, 2 блока в байт) ----
+const BLOCKS_PER_BYTE = 2;
+const BITS_PER_BLOCK = 4;
+const BLOCK_MASK = 0x0F;
+function packIndex(x, y, z) {
+  return (x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE) >> 1;
+}
+function getBlockFromPacked(arr, x, y, z) {
+  const idx = (x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE);
+  const byteIdx = idx >> 1;
+  const shift = (idx & 1) ? 4 : 0;
+  return (arr[byteIdx] >> shift) & BLOCK_MASK;
+}
+function setBlockToPacked(arr, x, y, z, value) {
+  const idx = (x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE);
+  const byteIdx = idx >> 1;
+  const shift = (idx & 1) ? 4 : 0;
+  arr[byteIdx] = (arr[byteIdx] & ~(BLOCK_MASK << shift)) | ((value & BLOCK_MASK) << shift);
+}
+
 export class Chunk {
   constructor(cx, cz) {
     this.cx = cx; this.cz = cz;
-    this.blocks = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT);
+    const totalBlocks = CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT;
+    const packedLength = Math.ceil(totalBlocks / BLOCKS_PER_BYTE);
+    this.packed = new Uint8Array(packedLength);
     this.mesh = null;
   }
-  index(x, y, z) { return x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE; }
-  get(x, y, z)    { return this.blocks[this.index(x, y, z)]; }
-  set(x, y, z, t) { this.blocks[this.index(x, y, z)] = t; }
+  get(x, y, z) { return getBlockFromPacked(this.packed, x, y, z); }
+  set(x, y, z, t) { setBlockToPacked(this.packed, x, y, z, t); }
 }
 
 export class World {
@@ -46,7 +67,12 @@ export class World {
     this.noise = new ImprovedNoise();
     this.chunks = new Map();
     this.edits = new Map();
+    // Кэши высот и биомов
+    this.heightCache = new Map();
+    this.biomeCache = new Map();
+    this.cacheLimit = 50000;
   }
+
   key(cx, cz) { return `${cx},${cz}`; }
   getChunk(cx, cz) { return this.chunks.get(this.key(cx, cz)); }
 
@@ -54,30 +80,39 @@ export class World {
     if (wy < 0 || wy >= WORLD_HEIGHT) return AIR;
     const cx = Math.floor(wx / CHUNK_SIZE), cz = Math.floor(wz / CHUNK_SIZE);
     const c = this.getChunk(cx, cz);
-    return c ? c.get(wx - cx * CHUNK_SIZE, wy, wz - cz * CHUNK_SIZE) : AIR;
+    if (!c) return AIR;
+    const lx = wx - cx * CHUNK_SIZE, lz = wz - cz * CHUNK_SIZE;
+    return c.get(lx, wy, lz);
   }
 
+  // Кэшированная высота
   terrainHeight(wx, wz) {
+    const key = `${Math.floor(wx)},${Math.floor(wz)}`;
+    if (this.heightCache.has(key)) return this.heightCache.get(key);
+    const h = this._computeTerrainHeight(wx, wz);
+    if (this.heightCache.size > this.cacheLimit) {
+      const first = this.heightCache.keys().next().value;
+      this.heightCache.delete(first);
+    }
+    this.heightCache.set(key, h);
+    return h;
+  }
+
+  _computeTerrainHeight(wx, wz) {
     const s = this.seed;
-    // Базовый шум (глобальный)
     let h = 24;
     h += this.noise.noise(wx / 80 + s, wz / 80 + s, 0)   * 16;
     h += this.noise.noise(wx / 30 + s, wz / 30 + s, 100) * 6;
     h += this.noise.noise(wx / 12 + s, wz / 12 + s, 200) * 2;
-
-    // Биомная модуляция
     const biome = this.getBiome(wx, wz);
     if (biome === 'desert') {
-      // Пустыня: гладкая, низкая
       h = 28 + this.noise.noise(wx / 50 + s, wz / 50 + s, 400) * 3;
       h = Math.max(24, Math.min(35, h));
     } else if (biome === 'mountain') {
-      // Горы: высокие, рельефные, с террасами
       h += this.noise.noise(wx / 20 + s, wz / 20 + s, 150) * 20;
       h += Math.abs(this.noise.noise(wx / 6 + s, wz / 6 + s, 250)) * 12;
       h = Math.max(45, Math.min(63, h));
     } else {
-      // Леса: умеренные холмы
       h += this.noise.noise(wx / 25 + s, wz / 25 + s, 300) * 6;
       h = Math.max(20, Math.min(50, h));
     }
@@ -85,17 +120,26 @@ export class World {
   }
 
   getBiome(wx, wz) {
+    const key = `${Math.floor(wx)},${Math.floor(wz)}`;
+    if (this.biomeCache.has(key)) return this.biomeCache.get(key);
     const val = this.noise.noise(wx * 0.005 + this.seed, wz * 0.005 + this.seed, 300);
-    if (val < -0.25) return 'desert';
-    if (val > 0.35) return 'mountain';
-    return 'forest';
+    let biome;
+    if (val < -0.25) biome = 'desert';
+    else if (val > 0.35) biome = 'mountain';
+    else biome = 'forest';
+    if (this.biomeCache.size > this.cacheLimit) {
+      const first = this.biomeCache.keys().next().value;
+      this.biomeCache.delete(first);
+    }
+    this.biomeCache.set(key, biome);
+    return biome;
   }
 
+  // Генерация чанка (аналогично предыдущему, но с использованием packed)
   generateChunk(cx, cz) {
     const chunk = new Chunk(cx, cz);
     const ox = cx * CHUNK_SIZE, oz = cz * CHUNK_SIZE;
 
-    // 1. Генерация ландшафта
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
         const wx = ox + x, wz = oz + z;
@@ -110,7 +154,6 @@ export class World {
             block = DIRT;
           } else {
             block = STONE;
-            // Руды
             if (y < 40 && this.noise.noise(wx * 0.1, y * 0.1, wz * 0.1) > 0.85)
               block = IRON_ORE;
             else if (y < 60 && this.noise.noise(wx * 0.12, y * 0.12, wz * 0.12) > 0.7)
@@ -118,22 +161,16 @@ export class World {
           }
           chunk.set(x, y, z, block);
         }
-        // Дополнительный слой песка в пустыне
         if (biome === 'desert' && height < WORLD_HEIGHT-1 && Math.random() < 0.3) {
           chunk.set(x, height, z, SAND);
         }
       }
     }
 
-    // 2. Генерация больших деревьев (только в лесах, 1 на ~10 чанков)
+    // Деревья (только в лесах)
     if (this.getBiome(ox + 8, oz + 8) === 'forest' && Math.random() < 0.1) {
-      const centerX = Math.floor(CHUNK_SIZE / 2);
-      const centerZ = Math.floor(CHUNK_SIZE / 2);
-      const wx = ox + centerX, wz = oz + centerZ;
-      const groundY = this.terrainHeight(wx, wz);
-      if (groundY < 55) {
-        this.generateBigTree(chunk, centerX, centerZ, groundY);
-      }
+      const groundY = this.terrainHeight(ox + 8, oz + 8);
+      if (groundY < 55) this.generateBigTree(chunk, 8, 8, groundY);
     }
 
     // Применяем пользовательские правки
@@ -149,11 +186,9 @@ export class World {
   }
 
   generateBigTree(chunk, cx, cz, groundY) {
-    const trunkHeight = 5 + Math.floor(Math.random() * 3); // 5-7
+    const trunkHeight = 5 + Math.floor(Math.random() * 3);
     const startX = cx, startZ = cz;
     const startY = groundY;
-
-    // Ствол 3x3
     for (let h = 0; h < trunkHeight; h++) {
       const y = startY + h;
       if (y >= WORLD_HEIGHT) break;
@@ -167,8 +202,6 @@ export class World {
         }
       }
     }
-
-    // Крона (сфера из листвы)
     const crownY = startY + trunkHeight - 1;
     const radius = 3;
     for (let dy = -2; dy <= 2; dy++) {
@@ -185,7 +218,6 @@ export class World {
         }
       }
     }
-    // Убираем листву, которая заменила ствол
     for (let dy = -1; dy <= 1; dy++) {
       const y = crownY + dy;
       if (y >= 0 && y < WORLD_HEIGHT && startX >= 0 && startX < CHUNK_SIZE && startZ >= 0 && startZ < CHUNK_SIZE)
@@ -285,27 +317,24 @@ export function buildChunkMesh(world, chunk) {
   return new THREE.Mesh(geo, CHUNK_MATERIAL);
 }
 
-// ---------- LOD меш с поддержкой биомов ----------
+// LOD-меш с увеличенным перекрытием (отдельно можно не трогать, но оставим как есть)
 export function buildLODMesh(world, gx, gz, level) {
   const step = 1 << level;
   const n = CHUNK_SIZE;
-  const size = n * step;
-  // Перекрытие на 2 шага, чтобы гарантированно закрыть стыки
   const overlap = 4;
-  const ox = gx * size - overlap * step;
-  const oz = gz * size - overlap * step;
-  const W = n + overlap*2 + 2; // +1 для индексации
+  const totalSteps = n + overlap * 2;
+  const ox = gx * n * step - overlap * step;
+  const oz = gz * n * step - overlap * step;
+  const W = totalSteps + 2;
   const H = new Int16Array(W * W);
-  // Заполняем высоты с запасом
-  for (let j = -overlap; j <= n + overlap; j++) {
-    for (let i = -overlap; i <= n + overlap; i++) {
+  for (let j = -overlap; j < n + overlap; j++) {
+    for (let i = -overlap; i < n + overlap; i++) {
       const wx = ox + (i + overlap) * step;
       const wz = oz + (j + overlap) * step;
       H[(i + overlap) + (j + overlap) * W] = world.terrainHeight(wx, wz);
     }
   }
   const h = (i, j) => H[(i + overlap) + (j + overlap) * W];
-
   const positions = [], normals = [], colors = [], indices = [];
   const Y_OFF = -0.05;
   function quad(verts, normal, c) {
@@ -317,10 +346,8 @@ export function buildLODMesh(world, gx, gz, level) {
     }
     indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
-
   const dirt = BLOCK_COLORS[DIRT];
   const stone = BLOCK_COLORS[STONE];
-
   for (let j = 0; j < n; j++) {
     for (let i = 0; i < n; i++) {
       const y = h(i, j);
@@ -328,29 +355,23 @@ export function buildLODMesh(world, gx, gz, level) {
       const z0 = oz + (j + overlap) * step;
       const x1 = x0 + step;
       const z1 = z0 + step;
-
-      const biome = world.getBiome(x0 + step / 2, z0 + step / 2);
+      const biome = world.getBiome(x0 + step/2, z0 + step/2);
       let surfaceType = GRASS;
       if (biome === 'desert') surfaceType = SAND;
       else if (biome === 'mountain') surfaceType = STONE;
       const topColor = BLOCK_COLORS[surfaceType];
-
       quad([[x0, y, z1], [x1, y, z1], [x1, y, z0], [x0, y, z0]], [0, 1, 0], topColor);
-
       const walls = [
-        [h(i + 1, j), [1, 0, 0], (a, b) => [[x1, a, z0], [x1, b, z0], [x1, b, z1], [x1, a, z1]]],
-        [h(i - 1, j), [-1, 0, 0], (a, b) => [[x0, a, z1], [x0, b, z1], [x0, b, z0], [x0, a, z0]]],
-        [h(i, j + 1), [0, 0, 1], (a, b) => [[x0, a, z1], [x1, a, z1], [x1, b, z1], [x0, b, z1]]],
-        [h(i, j - 1), [0, 0, -1], (a, b) => [[x1, a, z0], [x0, a, z0], [x0, b, z0], [x1, b, z0]]],
+        [h(i+1, j), [1,0,0], (a,b) => [[x1,a,z0],[x1,b,z0],[x1,b,z1],[x1,a,z1]]],
+        [h(i-1, j), [-1,0,0], (a,b) => [[x0,a,z1],[x0,b,z1],[x0,b,z0],[x0,a,z0]]],
+        [h(i,j+1), [0,0,1], (a,b) => [[x0,a,z1],[x1,a,z1],[x1,b,z1],[x0,b,z1]]],
+        [h(i,j-1), [0,0,-1], (a,b) => [[x1,a,z0],[x0,a,z0],[x0,b,z0],[x1,b,z0]]],
       ];
       for (const [hn, dir, make] of walls) {
-        if (hn < y) {
-          quad(make(hn, y), dir, (y - hn) <= 4 ? dirt : stone);
-        }
+        if (hn < y) quad(make(hn, y), dir, (y - hn) <= 4 ? dirt : stone);
       }
     }
   }
-
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
