@@ -272,7 +272,7 @@ export function buildChunkMesh(world, chunk) {
   return new THREE.Mesh(geo, CHUNK_MATERIAL);
 }
 
-// ---------- LOD mesh с перекрытием ----------
+// ---------- LOD mesh с перекрытием (без разрывов) ----------
 export function buildLODMesh(world, gx, gz, level) {
   const step = 1 << level;
   const n = CHUNK_SIZE;
