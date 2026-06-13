@@ -159,11 +159,11 @@ let yaw = 0, pitch = 0;
 let world = null;
 const FULL_RADIUS = 6;
 const LOD_RINGS = [
-  { level: 1, radius: 4 },
-  { level: 2, radius: 12 },
-  { level: 3, radius: 32 },
+  { level: 1, radius: 5 },
+  { level: 2, radius: 14 },
+  { level: 3, radius: 48 },
 ];
-const FULL_BUDGET = 6, LOD_BUDGET = 4;
+const FULL_BUDGET = 6, LOD_BUDGET = 5;
 const lodMeshes = new Map();
 
 function remeshChunk(chunk) {
