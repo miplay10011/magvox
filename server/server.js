@@ -64,7 +64,7 @@ function terrainHeight(wx, wz) {
 // ===== Состояние =====
 seed = Math.floor(Math.random() * 10000);
 const edits = new Map();
-const players = new Map(); // id -> { ws, x, y, z, yaw, hp, armor, mana, lastAttack, effects, nickname }
+const players = new Map();
 let nextId = 1;
 
 const wss = new WebSocketServer({ server: httpServer });
@@ -87,26 +87,45 @@ function syncEffects(q) {
 }
 
 function applyDamage(targetId, dmg, src = {}) {
-  const t = players.get(targetId);
-  if (!t) return;
-  const ward = t.effects.get('ward');
+  const target = players.get(targetId);
+  if (!target) return;
+  const attackerId = src.attackerId;
+  const weapon = src.weapon || 'неизвестного оружия';
+
+  const ward = target.effects.get('ward');
   if (ward && dmg > 0) {
     const absorbed = Math.min(ward.power, dmg);
     ward.power -= absorbed; dmg -= absorbed;
-    if (ward.power <= 0) t.effects.delete('ward');
-    syncEffects(t);
+    if (ward.power <= 0) target.effects.delete('ward');
+    syncEffects(target);
   }
-  const bonus = t.effects.get('stoneskin')?.power || 0;
-  dmg *= 1 - 0.04 * (t.armor + bonus);
+  const bonus = target.effects.get('stoneskin')?.power || 0;
+  dmg *= 1 - 0.04 * (target.armor + bonus);
   if (dmg <= 0 && !(src.kb > 0)) return;
-  t.hp -= Math.max(0, dmg);
-  if (t.hp <= 0) {
-    t.hp = 20; t.effects.clear(); syncEffects(t);
+
+  const wasAlive = target.hp > 0;
+  target.hp -= Math.max(0, dmg);
+
+  if (target.hp <= 0 && wasAlive) {
+    target.hp = 20; target.effects.clear(); syncEffects(target);
     broadcast('respawn', { id: targetId });
     broadcast('hp', { id: targetId, hp: 20 });
+
+    if (attackerId && attackerId !== targetId) {
+      const attacker = players.get(attackerId);
+      if (attacker) {
+        const killMsg = `${attacker.nickname} убил ${target.nickname} с помощью ${weapon}`;
+        broadcast('systemMessage', { message: killMsg });
+        console.log(killMsg);
+      } else {
+        broadcast('systemMessage', { message: `${target.nickname} погиб` });
+      }
+    } else {
+      broadcast('systemMessage', { message: `${target.nickname} погиб` });
+    }
   } else {
-    if (dmg > 0) broadcast('hp', { id: targetId, hp: t.hp });
-    send(t.ws, 'damaged', { ax: src.ax ?? t.x, az: src.az ?? t.z, hp: t.hp, kb: src.kb ?? 6 });
+    if (dmg > 0) broadcast('hp', { id: targetId, hp: target.hp });
+    send(target.ws, 'damaged', { ax: src.ax ?? target.x, az: src.az ?? target.z, hp: target.hp, kb: src.kb ?? 6 });
   }
 }
 
@@ -125,7 +144,7 @@ const magicCtx = {
   },
   terrainHeight,
   getPlayers: () => [...players].map(([id, q]) => [id, { x: q.x, y: q.y, z: q.z }]),
-  applyDamage,
+  applyDamage, // будет использовать обновлённую версию
   addEffect(id, type, dur, power) {
     const q = players.get(id);
     if (!q) return;
@@ -220,7 +239,7 @@ wss.on('connection', (ws) => {
       if (!t || now - q.lastAttack < 400) return;
       if ((q.x - t.x) ** 2 + (q.y - t.y) ** 2 + (q.z - t.z) ** 2 > 36) return;
       q.lastAttack = now;
-      applyDamage(msg.target, 4, { ax: q.x, az: q.z, kb: 8 });
+      applyDamage(msg.target, 4, { ax: q.x, az: q.z, kb: 8, attackerId: id, weapon: 'меча' });
     } else if (msg.type === 'cast') {
       magic.cast(id, msg.elements, msg.dir, { x: q.x, y: q.y + 1.62, z: q.z }, q.yaw);
     } else if (msg.type === 'chat') {

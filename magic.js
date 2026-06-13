@@ -1,7 +1,7 @@
 // Общий движок заклинаний: работает и в Node (сервер), и в браузере (оффлайн).
 export const SPELL_ELEMENTS = ['fire','water','air','earth','beam','ice','shield','light','dark'];
 export const CONFLICTS = [['fire','water'],['fire','ice'],['light','dark']];
-export const MANA_PER_ELEMENT = 2, CAST_COOLDOWN = 500;
+export const MANA_PER_ELEMENT = 1, CAST_COOLDOWN = 500;
 
 export function createMagicEngine(ctx) {
   const projectiles = new Map(), mines = new Map(), lastCast = new Map();
@@ -24,7 +24,7 @@ export function createMagicEngine(ctx) {
     return true;
   }
 
-  function explode(x, y, z, radius, dmg) {
+  function explode(x, y, z, radius, dmg, ownerId) {
     radius = Math.min(radius, 4.5);
     ctx.emit('explosion', { x, y, z, r: radius });
     const r = Math.ceil(radius);
@@ -37,17 +37,23 @@ export function createMagicEngine(ctx) {
         }
     const rr = radius * 1.6;
     for (const [id, p] of ctx.getPlayers()) {
+      if (id === ownerId) continue;
       const d2 = (p.x - x) ** 2 + (p.y + 0.9 - y) ** 2 + (p.z - z) ** 2;
       if (d2 < rr * rr)
-        ctx.applyDamage(id, dmg * (1 - Math.sqrt(d2) / rr), { ax: x, az: z, kb: 8 + radius * 2 });
+        ctx.applyDamage(id, dmg * (1 - Math.sqrt(d2) / rr), {
+          ax: x, az: z, kb: 8 + radius * 2,
+          attackerId: ownerId,
+          weapon: 'магии'
+        });
     }
   }
 
-  function applyElementEffects(targetId, n) {
+  function applyElementEffects(targetId, n, attackerId) {
     if (n('fire')) ctx.addEffect(targetId, 'burning', 3, n('fire'));
     if (n('ice'))  ctx.addEffect(targetId, n('ice') >= 3 ? 'freeze' : 'slow',
                                  n('ice') >= 3 ? 1.5 : 4, n('ice'));
     if (n('dark')) ctx.addEffect(targetId, 'curse', 6 + 2 * n('dark'), n('dark'));
+    // не наносим урон здесь, только эффекты
   }
 
   function cast(casterId, els, dirArr, origin, yaw) {
@@ -142,7 +148,7 @@ export function createMagicEngine(ctx) {
     for (const [id, p] of ctx.getPlayers()) {
       if (id === casterId) continue;
       const d2 = (p.x - x) ** 2 + (p.y - y) ** 2 + (p.z - z) ** 2;
-      if (d2 < 36) ctx.applyDamage(id, 0, { ax: x, az: z, kb: 10 + 2 * len });
+      if (d2 < 36) ctx.applyDamage(id, 0, { ax: x, az: z, kb: 10 + 2 * len, attackerId: casterId, weapon: 'магии' });
     }
   }
 
@@ -169,12 +175,13 @@ export function createMagicEngine(ctx) {
     if (hitId === null) return;
     if (n('light') && n('light') * 2 >= len) {
       ctx.clearDebuffs(hitId);
-      return ctx.healPlayer(hitId, 3 * n('light'));
+      ctx.healPlayer(hitId, 3 * n('light'));
+      return;
     }
-    applyElementEffects(hitId, n);
+    applyElementEffects(hitId, n, casterId);
     ctx.applyDamage(hitId,
       2 + 2 * n('fire') + 2 * n('earth') + n('ice') + n('dark') + n('water'),
-      { ax: ox, az: oz, kb: 4 });
+      { ax: ox, az: oz, kb: 4, attackerId: casterId, weapon: 'магии' });
   }
 
   function tick(dt) {
@@ -193,10 +200,13 @@ export function createMagicEngine(ctx) {
       if (pr.ttl <= 0 || hitPlayer !== null || hitBlock || pr.y < 0) {
         projectiles.delete(id);
         ctx.emit('projEnd', { id, x: pr.x, y: pr.y, z: pr.z });
-        if (pr.explosive) explode(pr.x, pr.y, pr.z, pr.radius, pr.dmg);
+        if (pr.explosive) explode(pr.x, pr.y, pr.z, pr.radius, pr.dmg, pr.owner);
         else if (hitPlayer !== null) {
-          if (pr.fx?.n) applyElementEffects(hitPlayer, pr.fx.n);
-          ctx.applyDamage(hitPlayer, pr.dmg, { ax: pr.x - pr.vx, az: pr.z - pr.vz, kb: pr.fx?.kb ?? 6 });
+          if (pr.fx?.n) applyElementEffects(hitPlayer, pr.fx.n, pr.owner);
+          ctx.applyDamage(hitPlayer, pr.dmg, {
+            ax: pr.x - pr.vx, az: pr.z - pr.vz, kb: pr.fx?.kb ?? 6,
+            attackerId: pr.owner, weapon: 'магии'
+          });
         }
       }
     }
@@ -211,7 +221,7 @@ export function createMagicEngine(ctx) {
       if (trigger) {
         mines.delete(id);
         ctx.emit('mineEnd', { id });
-        if (m.ttl > 0) explode(m.x, m.y, m.z, m.radius, m.dmg);
+        if (m.ttl > 0) explode(m.x, m.y, m.z, m.radius, m.dmg, m.owner);
       }
     }
   }

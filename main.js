@@ -557,6 +557,9 @@ net.on('disconnect', () => {
   for (const id of [...remotePlayers.keys()]) removeRemotePlayer(id);
   setStatus('оффлайн (одиночная игра)');
 });
+net.on('systemMessage', (msg) => {
+  addChatMessage('Система', msg.message);
+});
 
 // ========== Чат и координаты ==========
 const coordDisplay = document.getElementById('coord-display');
