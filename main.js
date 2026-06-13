@@ -390,10 +390,10 @@ function createPlayerModel(color) {
   // Ноги (длина 0.6, ширина 0.3, глубина 0.3)
   const legGeo = new THREE.BoxGeometry(0.3, 0.6, 0.3);
   const leftLeg = new THREE.Mesh(legGeo, mat);
-  leftLeg.position.set(-0.2, -0.1, 0);
+  leftLeg.position.set(-0.2, 0.4, 0);
   group.add(leftLeg);
   const rightLeg = new THREE.Mesh(legGeo, mat);
-  rightLeg.position.set(0.2, -0.1, 0);
+  rightLeg.position.set(0.2, 0.4, 0);
   group.add(rightLeg);
   
   // Торс (высота 0.5, ширина 0.6, глубина 0.3)
@@ -414,7 +414,7 @@ function createPlayerModel(color) {
   // Голова (куб 0.5x0.5x0.5)
   const headGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
   const head = new THREE.Mesh(headGeo, mat);
-  head.position.set(0, 1.2, 0);
+  head.position.set(0, 2.2, 0);
   group.add(head);
   
   // Невидимый хитбокс (размеры PLAYER)
