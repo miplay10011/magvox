@@ -380,57 +380,44 @@ function updateTransients(dt) {
 const SERVER_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
 let myId = null;
 let myNickname = '';
-const remotePlayers = new Map(); // id -> { group, target, yaw, nickname, originalColors? }
-const remoteGeo = new THREE.BoxGeometry(PLAYER.width, PLAYER.height, PLAYER.width);
+const remotePlayers = new Map();
 
-// Функция создания модели игрока (голова, шея, торс, руки, ноги) + невидимый хитбокс
+// Функция создания модели игрока (исправленные пропорции)
 function createPlayerModel(color) {
   const group = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.1 });
   
-  // Торс верх (грудь)
-  const chestGeo = new THREE.BoxGeometry(0.6, 0.5, 0.3);
-  const chest = new THREE.Mesh(chestGeo, mat);
-  chest.position.set(0, 0.6, 0);
-  group.add(chest);
-  
-  // Торс низ (таз)
-  const pelvisGeo = new THREE.BoxGeometry(0.5, 0.4, 0.3);
-  const pelvis = new THREE.Mesh(pelvisGeo, mat);
-  pelvis.position.set(0, 0.2, 0);
-  group.add(pelvis);
-  
-  // Голова
-  const headGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-  const head = new THREE.Mesh(headGeo, mat);
-  head.position.set(0, 0.95, 0);
-  group.add(head);
-  
-  // Шея
-  const neckGeo = new THREE.BoxGeometry(0.3, 0.2, 0.2);
-  const neck = new THREE.Mesh(neckGeo, mat);
-  neck.position.set(0, 0.75, 0);
-  group.add(neck);
-  
-  // Руки
-  const armGeo = new THREE.BoxGeometry(0.4, 0.7, 0.3);
-  const leftArm = new THREE.Mesh(armGeo, mat);
-  leftArm.position.set(-0.55, 0.7, 0);
-  group.add(leftArm);
-  const rightArm = new THREE.Mesh(armGeo, mat);
-  rightArm.position.set(0.55, 0.7, 0);
-  group.add(rightArm);
-  
-  // Ноги
-  const legGeo = new THREE.BoxGeometry(0.4, 0.7, 0.3);
+  // Ноги (длина 0.6, ширина 0.3, глубина 0.3)
+  const legGeo = new THREE.BoxGeometry(0.3, 0.6, 0.3);
   const leftLeg = new THREE.Mesh(legGeo, mat);
-  leftLeg.position.set(-0.3, -0.3, 0);
+  leftLeg.position.set(-0.2, -0.3, 0);
   group.add(leftLeg);
   const rightLeg = new THREE.Mesh(legGeo, mat);
-  rightLeg.position.set(0.3, -0.3, 0);
+  rightLeg.position.set(0.2, -0.3, 0);
   group.add(rightLeg);
   
-  // Невидимый хитбокс (для коллизий и рейкаста)
+  // Торс (высота 0.5, ширина 0.6, глубина 0.3)
+  const torsoGeo = new THREE.BoxGeometry(0.6, 0.5, 0.3);
+  const torso = new THREE.Mesh(torsoGeo, mat);
+  torso.position.set(0, 0.3, 0);
+  group.add(torso);
+  
+  // Руки (длина 0.6, ширина 0.3, глубина 0.3)
+  const armGeo = new THREE.BoxGeometry(0.3, 0.6, 0.3);
+  const leftArm = new THREE.Mesh(armGeo, mat);
+  leftArm.position.set(-0.45, 0.45, 0);
+  group.add(leftArm);
+  const rightArm = new THREE.Mesh(armGeo, mat);
+  rightArm.position.set(0.45, 0.45, 0);
+  group.add(rightArm);
+  
+  // Голова (куб 0.5x0.5x0.5)
+  const headGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+  const head = new THREE.Mesh(headGeo, mat);
+  head.position.set(0, 0.8, 0);
+  group.add(head);
+  
+  // Невидимый хитбокс (размеры PLAYER)
   const hitboxGeo = new THREE.BoxGeometry(PLAYER.width, PLAYER.height, PLAYER.width);
   const hitboxMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, visible: true });
   const hitbox = new THREE.Mesh(hitboxGeo, hitboxMat);
@@ -440,33 +427,50 @@ function createPlayerModel(color) {
   return group;
 }
 
-// Функция для временной красной вспышки всей модели
+// Функция временной красной вспышки (с сохранением оригинального цвета)
 function flashPlayerModel(group, duration = 200) {
   if (!group) return;
-  // Сохраняем оригинальные цвета материалов
-  const originalColors = [];
+  // Сохраняем оригинальные цвета в userData, если ещё не сохранены
   group.children.forEach(child => {
     if (child.isMesh && child.material) {
       if (Array.isArray(child.material)) {
-        const mats = child.material;
-        originalColors.push(mats.map(m => m.color.clone()));
-        mats.forEach(m => m.color.setHex(0xff0000));
+        child.material.forEach(mat => {
+          if (!mat.userData.originalColor) {
+            mat.userData.originalColor = mat.color.clone();
+          }
+        });
       } else {
-        originalColors.push(child.material.color.clone());
+        if (!child.material.userData.originalColor) {
+          child.material.userData.originalColor = child.material.color.clone();
+        }
+      }
+    }
+  });
+  // Устанавливаем красный
+  group.children.forEach(child => {
+    if (child.isMesh && child.material) {
+      if (Array.isArray(child.material)) {
+        child.material.forEach(mat => mat.color.setHex(0xff0000));
+      } else {
         child.material.color.setHex(0xff0000);
       }
     }
   });
-  setTimeout(() => {
-    group.children.forEach((child, idx) => {
+  // Отменяем предыдущий таймер, если есть
+  if (group._flashTimer) clearTimeout(group._flashTimer);
+  group._flashTimer = setTimeout(() => {
+    group.children.forEach(child => {
       if (child.isMesh && child.material) {
         if (Array.isArray(child.material)) {
-          child.material.forEach((m, i) => m.color.copy(originalColors[idx][i]));
+          child.material.forEach(mat => {
+            if (mat.userData.originalColor) mat.color.copy(mat.userData.originalColor);
+          });
         } else {
-          child.material.color.copy(originalColors[idx]);
+          if (child.material.userData.originalColor) child.material.color.copy(child.material.userData.originalColor);
         }
       }
     });
+    group._flashTimer = null;
   }, duration);
 }
 
@@ -484,7 +488,6 @@ function removeRemotePlayer(id) {
   const rp = remotePlayers.get(id);
   if (!rp) return;
   scene.remove(rp.group);
-  // диспоуз материалов/геометрий (опционально)
   remotePlayers.delete(id);
   setStatus(`онлайн · игроков: ${remotePlayers.size}`);
 }
@@ -589,9 +592,7 @@ net.on('hp', (m) => {
   else {
     const rp = remotePlayers.get(m.id);
     if (rp) {
-      // Красная вспышка модели
       flashPlayerModel(rp.group, 200);
-      // Партиклы крови/искр вокруг позиции
       const pos = rp.group.position;
       spawnParticles(pos.x, pos.y + 1, pos.z, 0xff3333, 20, 2, 1.0);
     }
@@ -604,7 +605,6 @@ net.on('effects', (m) => {
 });
 net.on('damaged', (m) => {
   stats.hp = m.hp; renderStats(); damageFlash();
-  // Добавляем партиклы вокруг камеры для локального урона
   spawnParticles(camera.position.x, camera.position.y - 0.5, camera.position.z, 0xff4444, 15, 1.5, 0.8);
   const kb = m.kb ?? 8;
   if (kb > 0) {
@@ -672,7 +672,6 @@ function addChatMessage(sender, message) {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-// Самоубийство
 function suicide() {
   stats.hp = 0;
   renderStats();
@@ -709,13 +708,11 @@ function suicide() {
   addChatMessage('Система', 'Вы совершили самоубийство');
 }
 
-// Получение сообщений от сервера
 net.on('chat', (msg) => {
   const senderName = msg.senderId === myId ? 'You' : (msg.senderNick || `Player ${msg.senderId}`);
   addChatMessage(senderName, msg.message);
 });
 
-// Обработка фокуса чата
 chatInput.addEventListener('focus', () => {
   chatFocused = true;
   keys.clear();
@@ -724,7 +721,6 @@ chatInput.addEventListener('blur', () => {
   chatFocused = false;
 });
 
-// Отправка сообщений и локальное отображение (с поддержкой команд)
 chatInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter' && chatInput.value.trim()) {
     let message = chatInput.value.trim();
@@ -749,7 +745,6 @@ chatInput.addEventListener('keypress', (e) => {
   }
 });
 
-// Закрытие чата по Escape
 chatInput.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     chatInput.blur();
@@ -758,7 +753,6 @@ chatInput.addEventListener('keydown', (e) => {
   }
 });
 
-// Создание меню настроек
 createSettingsMenu();
 
 // ========== Оффлайн-магия ==========
