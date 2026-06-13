@@ -1,6 +1,7 @@
 // Общий движок заклинаний: работает и в Node (сервер), и в браузере (оффлайн).
 export const SPELL_ELEMENTS = ['fire','water','air','earth','beam','ice','shield','light','dark'];
-export const CONFLICTS = [['fire','water'],['fire','ice'],['light','dark']];
+// Убираем конфликт light-dark, оставляем только fire-water и fire-ice
+export const CONFLICTS = [['fire','water'],['fire','ice']];
 export const MANA_PER_ELEMENT = 1, CAST_COOLDOWN = 500;
 
 export function createMagicEngine(ctx) {
@@ -71,39 +72,80 @@ export function createMagicEngine(ctx) {
     dx /= dl; dy /= dl; dz /= dl;
     const ox = origin.x, oy = origin.y, oz = origin.z;
 
-    // ========== НОВЫЕ КОМБИНАЦИИ (длительности увеличены в 5 раз) ==========
-    // Прыгучесть (air + air + earth) – 75 сек
-    if (n('air') === 2 && n('earth') === 1) {
-      ctx.addEffect(casterId, 'jump_boost', 75, 2);
+    // ========== НОВЫЕ КОМБИНАЦИИ ==========
+    // Прыгучесть (air + earth) – базовый вариант
+    if (n('air') === 1 && n('earth') === 1) {
+      ctx.addEffect(casterId, 'jump_boost', 75, 1.3);
       return;
     }
-    // Регенерация (water + light + light) – 50 сек
-    if (n('water') === 1 && n('light') === 2) {
+    // Усиленная прыгучесть (air + air + earth)
+    if (n('air') === 2 && n('earth') === 1) {
+      ctx.addEffect(casterId, 'jump_boost', 120, 2);
+      return;
+    }
+
+    // Регенерация (water + light) – базовый
+    if (n('water') === 1 && n('light') === 1) {
       ctx.addEffect(casterId, 'regen', 50, 1);
       return;
     }
-    // Огнеупорность (fire + earth + shield) – 100 сек
-    if (n('fire') === 1 && n('earth') === 1 && n('shield') === 1) {
+    // Усиленная регенерация (water + light + light)
+    if (n('water') === 1 && n('light') === 2) {
+      ctx.addEffect(casterId, 'regen', 80, 2);
+      return;
+    }
+
+    // Огнеупорность (fire + earth) – базовый
+    if (n('fire') === 1 && n('earth') === 1) {
       ctx.addEffect(casterId, 'fire_resist', 100, 1);
       return;
     }
-    // Огненная аура (fire + fire + air + air) – 60 сек, урон 1
-    if (n('fire') >= 2 && n('air') >= 2) {
+    // Усиленная огнеупорность (fire + earth + shield)
+    if (n('fire') === 1 && n('earth') === 1 && n('shield') === 1) {
+      ctx.addEffect(casterId, 'fire_resist', 150, 2);
+      return;
+    }
+
+    // Огненная аура (fire + fire + air) – базовый урон 1
+    if (n('fire') === 2 && n('air') === 1) {
       ctx.addEffect(casterId, 'fire_aura', 60, 1);
       return;
     }
-    // Ледяная кожа (ice + earth + earth) – 75 сек
-    if (n('ice') === 1 && n('earth') === 2) {
+    // Усиленная огненная аура (fire + fire + air + air) – урон 2
+    if (n('fire') === 2 && n('air') === 2) {
+      ctx.addEffect(casterId, 'fire_aura', 90, 2);
+      return;
+    }
+    // Максимальная аура (fire + fire + fire + air + air) – урон 3
+    if (n('fire') === 3 && n('air') === 2) {
+      ctx.addEffect(casterId, 'fire_aura', 120, 3);
+      return;
+    }
+
+    // Ледяная кожа (ice + earth) – базовый
+    if (n('ice') === 1 && n('earth') === 1) {
       ctx.addEffect(casterId, 'ice_skin', 75, 1);
       return;
     }
-    // Разряд (beam + fire + air) – 40 сек
-    if (n('beam') === 1 && n('fire') === 1 && n('air') === 1) {
+    // Усиленная ледяная кожа (ice + earth + earth) – длиннее
+    if (n('ice') === 1 && n('earth') === 2) {
+      ctx.addEffect(casterId, 'ice_skin', 120, 1);
+      return;
+    }
+
+    // Разряд (beam + fire) – базовый
+    if (n('beam') === 1 && n('fire') === 1) {
       ctx.addEffect(casterId, 'chain_lightning', 40, 1);
       return;
     }
-    // Ослепление (light + dark + air) – 15 сек
-    if (n('light') === 1 && n('dark') === 1 && n('air') === 1) {
+    // Усиленный разряд (beam + fire + air) – больше шанс?
+    if (n('beam') === 1 && n('fire') === 1 && n('air') === 1) {
+      ctx.addEffect(casterId, 'chain_lightning', 60, 2);
+      return;
+    }
+
+    // Ослепление (light + dark) – базовое
+    if (n('light') === 1 && n('dark') === 1) {
       for (const [id, p] of ctx.getPlayers()) {
         if (id === casterId) continue;
         const dist = Math.hypot(p.x - ox, p.z - oz);
@@ -111,23 +153,51 @@ export function createMagicEngine(ctx) {
       }
       return;
     }
-    // Теневой шаг (dark + dark + air) – мгновенный
-    if (n('dark') === 2 && n('air') === 1) {
+    // Усиленное ослепление (light + dark + air) – больший радиус
+    if (n('light') === 1 && n('dark') === 1 && n('air') === 1) {
+      for (const [id, p] of ctx.getPlayers()) {
+        if (id === casterId) continue;
+        const dist = Math.hypot(p.x - ox, p.z - oz);
+        if (dist < 8) ctx.addEffect(id, 'blind', 25, 1);
+      }
+      return;
+    }
+
+    // Теневой шаг (dark + dark) – базовый
+    if (n('dark') === 2) {
       ctx.emit('shadowStepRequest', { casterId });
       return;
     }
-    // Невесомость (air + air + light) – 50 сек
-    if (n('air') === 2 && n('light') === 1) {
+    // Усиленный теневой шаг (dark + dark + air) – большая дальность
+    if (n('dark') === 2 && n('air') === 1) {
+      ctx.emit('shadowStepRequest', { casterId, range: 15 });
+      return;
+    }
+
+    // Невесомость (air + light) – базовый
+    if (n('air') === 1 && n('light') === 1) {
       ctx.addEffect(casterId, 'weightless', 50, 1);
       return;
     }
-    // Барьер (shield + earth) – 75 сек, щит 4
-    if (n('shield') === 1 && n('earth') === 1) {
-      ctx.addEffect(casterId, 'ward', 75, { power: 4 });
+    // Усиленная невесомость (air + air + light) – дольше
+    if (n('air') === 2 && n('light') === 1) {
+      ctx.addEffect(casterId, 'weightless', 80, 1);
       return;
     }
-    // Цепочка послушания (dark + beam + fire) – без конфликта
-    if (n('dark') === 1 && n('beam') === 1 && n('fire') === 1) {
+
+    // Барьер (shield) – базовый (3 единицы)
+    if (n('shield') === 1) {
+      ctx.addEffect(casterId, 'ward', 75, { power: 3 });
+      return;
+    }
+    // Усиленный барьер (shield + earth) – 5 единиц
+    if (n('shield') === 1 && n('earth') === 1) {
+      ctx.addEffect(casterId, 'ward', 100, { power: 5 });
+      return;
+    }
+
+    // Цепочка послушания (dark + beam) – базовый
+    if (n('dark') === 1 && n('beam') === 1) {
       let nearest = null, minDist = Infinity;
       for (const [id, p] of ctx.getPlayers()) {
         if (id === casterId) continue;
@@ -140,24 +210,68 @@ export function createMagicEngine(ctx) {
       }
       return;
     }
-    // Массовый левитирующий круг (air + air + water + earth) – 40 сек
-    if (n('air') === 2 && n('water') === 1 && n('earth') === 1) {
-      ctx.addZone(ox, oz, 4, 'levitate_circle', casterId, 40);
-      ctx.emit('systemMessage', { message: 'Вы создали левитирующий круг на 40 секунд!' });
-      return;
-    }
-    // Обмен местами (dark + air + earth) – без конфликта
-    if (n('dark') === 1 && n('air') === 1 && n('earth') === 1) {
+    // Усиленная цепочка (dark + beam + fire) – связывает и наносит дополнительный урон при связи
+    if (n('dark') === 1 && n('beam') === 1 && n('fire') === 1) {
       let nearest = null, minDist = Infinity;
       for (const [id, p] of ctx.getPlayers()) {
         if (id === casterId) continue;
         const dist = Math.hypot(p.x - ox, p.z - oz);
-        if (dist < minDist && dist < 10) { minDist = dist; nearest = id; }
+        if (dist < minDist && dist < 12) { minDist = dist; nearest = id; }
+      }
+      if (nearest) {
+        ctx.chainPlayers(casterId, nearest);
+        ctx.applyDamage(nearest, 4, { attackerId: casterId, weapon: 'цепочки послушания' });
+        ctx.emit('systemMessage', { message: `Цепочка послушания связала вас с игроком ${nearest} и нанесла урон` });
+      }
+      return;
+    }
+
+    // Массовый левитирующий круг (air + water) – базовый радиус 3
+    if (n('air') === 1 && n('water') === 1) {
+      ctx.addZone(ox, oz, 3, 'levitate_circle', casterId, 40);
+      ctx.emit('systemMessage', { message: 'Вы создали левитирующий круг!' });
+      return;
+    }
+    // Усиленный круг (air + air + water + earth) – радиус 5
+    if (n('air') === 2 && n('water') === 1 && n('earth') === 1) {
+      ctx.addZone(ox, oz, 5, 'levitate_circle', casterId, 60);
+      ctx.emit('systemMessage', { message: 'Вы создали усиленный левитирующий круг!' });
+      return;
+    }
+
+    // Обмен местами (dark + air) – базовый радиус 8
+    if (n('dark') === 1 && n('air') === 1) {
+      let nearest = null, minDist = Infinity;
+      for (const [id, p] of ctx.getPlayers()) {
+        if (id === casterId) continue;
+        const dist = Math.hypot(p.x - ox, p.z - oz);
+        if (dist < minDist && dist < 8) { minDist = dist; nearest = id; }
       }
       if (nearest) {
         ctx.swapPositions(casterId, nearest);
         ctx.emit('systemMessage', { message: 'Вы обменялись местами!' });
       }
+      return;
+    }
+    // Усиленный обмен (dark + air + earth) – радиус 12
+    if (n('dark') === 1 && n('air') === 1 && n('earth') === 1) {
+      let nearest = null, minDist = Infinity;
+      for (const [id, p] of ctx.getPlayers()) {
+        if (id === casterId) continue;
+        const dist = Math.hypot(p.x - ox, p.z - oz);
+        if (dist < minDist && dist < 12) { minDist = dist; nearest = id; }
+      }
+      if (nearest) {
+        ctx.swapPositions(casterId, nearest);
+        ctx.emit('systemMessage', { message: 'Вы обменялись местами на большом расстоянии!' });
+      }
+      return;
+    }
+
+    // Дополнительные комбинации: ускорение (air + air) – базовое, уже есть в старом коде
+    // Но добавим усиленное ускорение (air + air + light)
+    if (n('air') === 2 && n('light') === 1) {
+      ctx.addEffect(casterId, 'speed', 20, 2.5);
       return;
     }
 
