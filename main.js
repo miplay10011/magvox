@@ -102,7 +102,136 @@ function toggleSettings(open) {
     }
 }
 
-// ========== Партиклы ==========
+// ========== Книга комбинаций ==========
+const SPELL_COMBINATIONS = [
+  // БАФФЫ (на себя/союзников)
+  { name: "Прыгучесть", elements: "air + air + earth", effect: "+50% высоты прыжка на 75 сек" },
+  { name: "Регенерация", elements: "water + light + light", effect: "1 HP/сек на 50 сек" },
+  { name: "Огнеупорность", elements: "fire + earth + shield", effect: "50% сопротивления огню на 100 сек" },
+  { name: "Огненная аура", elements: "fire + fire + air", effect: "1 урон/сек врагам в радиусе 3 на 60 сек" },
+  { name: "Ледяная кожа", elements: "ice + ice + earth", effect: "замедление атакующих на 2 сек (75 сек)" },
+  { name: "Разряд (цепная молния)", elements: "beam + fire + air", effect: "20% шанс молнии при атаке (40 сек)" },
+  { name: "Невесомость", elements: "air + air + light", effect: "медленное падение + двойной прыжок (50 сек)" },
+  { name: "Барьер (личный щит)", elements: "shield + earth", effect: "щит на 4 ед. поглощения (75 сек)" },
+  { name: "Каменная кожа", elements: "shield + ice", effect: "+ броня на 8 сек" },
+  { name: "Лечение", elements: "light + light", effect: "снимает дебаффы, лечит 3*кол-во света" },
+  { name: "Ускорение", elements: "air + air", effect: "+60% скорости на 3+2*n(air) сек" },
+  { name: "Левитация", elements: "air + light", effect: "медленное парение" },
+
+  // АТАКИ / ДЕБАФФЫ (требуют dark)
+  { name: "Ослепление", elements: "light + water + air", effect: "слепота врагов в радиусе 5 (15 сек)" },
+  { name: "Теневой шаг", elements: "dark + dark + air", effect: "телепорт за спину ближайшему игроку" },
+  { name: "Цепочка послушания", elements: "dark + beam + fire", effect: "связывает врагов, передача 50% урона" },
+  { name: "Обмен местами", elements: "dark + air + earth", effect: "меняется позициями с ближайшим игроком" },
+  { name: "Мина", elements: "shield + dark", effect: "ставит мину, взрыв при приближении врага" },
+  { name: "Телепортация", elements: "air + dark", effect: "телепорт в направлении взгляда" },
+
+  // МОЩНЫЕ 5-ЭЛЕМЕНТНЫЕ
+  { name: "Сфера абсолютной защиты", elements: "shield + earth + air + water + light", effect: "непробиваемая сфера (лечение, отражение 50% урона)" },
+  { name: "Астероид", elements: "fire + earth + dark + beam + air", effect: "падающий камень, взрыв, воронка" },
+  { name: "Вечный лёд разума", elements: "ice + water + earth + dark + light", effect: "зона замедления времени (радиус 5, 15 сек)" },
+  { name: "Феникс-возрождение", elements: "fire + light + air + earth + shield", effect: "при HP<4 возрождается с 8 HP (1 раз)" },
+  { name: "Громокаменный топот", elements: "earth + air + fire + beam + shield", effect: "ударная волна, подбрасывает" },
+  { name: "Чёрный вихрь", elements: "dark + air + water + earth + beam", effect: "торнадо, периодический урон" },
+  { name: "Световая клетка", elements: "light + beam + air + earth + fire", effect: "клетка, урон разрядами каждую секунду" },
+  { name: "Теневые оковы", elements: "dark + ice + earth + air + water", effect: "враг не может поворачиваться и тонет" },
+  { name: "Дыхание дракона", elements: "fire + dark + air + earth + ice", effect: "конусный выдох (урон, поджог, заморозка, ослабление)" },
+
+  // СНАРЯДЫ
+  { name: "Электрический тотем", elements: "earth + beam + air", effect: "ставит тотем, дающий ускорение и зарядку оружия" },
+  { name: "Метеор", elements: "beam + fire + earth", effect: "падающий взрывной снаряд" },
+  { name: "Обычный снаряд", elements: "любая комбинация (кроме shield/beam)", effect: "урон зависит от элементов, взрывной если fire+earth" },
+];
+
+let spellBookOpen = false;
+let spellBookElement = null;
+let spellBookContent = null;
+let currentPage = 0;
+const SPELLS_PER_PAGE = 8;
+
+function renderSpellBook() {
+  if (!spellBookContent) return;
+  const start = currentPage * SPELLS_PER_PAGE;
+  const end = Math.min(start + SPELLS_PER_PAGE, SPELL_COMBINATIONS.length);
+  let html = '<div style="display:flex; flex-direction:column; gap:8px;">';
+  for (let i = start; i < end; i++) {
+    const s = SPELL_COMBINATIONS[i];
+    html += `<div style="border-bottom:1px solid #888; padding:4px;">
+              <b>${s.name}</b><br>
+              <span style="color:#ffaa66;">${s.elements}</span><br>
+              <span style="font-size:12px;">${s.effect}</span>
+            </div>`;
+  }
+  html += `</div><div style="margin-top:12px; text-align:center; font-size:14px;">Страница ${Math.floor(currentPage)+1} из ${Math.ceil(SPELL_COMBINATIONS.length/SPELLS_PER_PAGE)}</div>`;
+  spellBookContent.innerHTML = html;
+}
+
+function openSpellBook() {
+  if (spellBookOpen) return;
+  spellBookOpen = true;
+  if (!spellBookElement) {
+    spellBookElement = document.createElement('div');
+    spellBookElement.id = 'spell-book';
+    spellBookElement.style.cssText = `
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 500px; max-height: 80%; background: rgba(20,20,30,0.95);
+      border: 2px solid #c9a87b; border-radius: 12px;
+      padding: 16px; color: #f0e6d0; font-family: monospace;
+      z-index: 1000; display: flex; flex-direction: column;
+      backdrop-filter: blur(8px); box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    `;
+    const title = document.createElement('h2');
+    title.textContent = '📖 Книга заклинаний';
+    title.style.margin = '0 0 10px 0';
+    title.style.textAlign = 'center';
+    spellBookElement.appendChild(title);
+    
+    spellBookContent = document.createElement('div');
+    spellBookContent.style.overflowY = 'auto';
+    spellBookContent.style.flex = '1';
+    spellBookElement.appendChild(spellBookContent);
+    
+    const navDiv = document.createElement('div');
+    navDiv.style.display = 'flex';
+    navDiv.style.justifyContent = 'space-between';
+    navDiv.style.marginTop = '12px';
+    const prevBtn = document.createElement('button');
+    prevBtn.textContent = '◀ Назад';
+    prevBtn.style.padding = '4px 12px';
+    prevBtn.style.cursor = 'pointer';
+    prevBtn.onclick = () => { if (currentPage > 0) { currentPage--; renderSpellBook(); } };
+    const nextBtn = document.createElement('button');
+    nextBtn.textContent = 'Вперед ▶';
+    nextBtn.style.padding = '4px 12px';
+    nextBtn.style.cursor = 'pointer';
+    nextBtn.onclick = () => { if ((currentPage+1)*SPELLS_PER_PAGE < SPELL_COMBINATIONS.length) { currentPage++; renderSpellBook(); } };
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = 'Закрыть (Esc)';
+    closeBtn.style.padding = '4px 12px';
+    closeBtn.style.cursor = 'pointer';
+    closeBtn.onclick = closeSpellBook;
+    navDiv.appendChild(prevBtn);
+    navDiv.appendChild(closeBtn);
+    navDiv.appendChild(nextBtn);
+    spellBookElement.appendChild(navDiv);
+    document.body.appendChild(spellBookElement);
+  }
+  renderSpellBook();
+  spellBookElement.style.display = 'flex';
+  // Блокируем управление
+  if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
+  keys.clear();
+}
+
+function closeSpellBook() {
+  if (!spellBookOpen) return;
+  spellBookOpen = false;
+  if (spellBookElement) spellBookElement.style.display = 'none';
+  // Возвращаем захват мыши, если инвентарь закрыт и нет настроек
+  if (!invOpen && !settingsOpen && !chatFocused) {
+    renderer.domElement.requestPointerLock();
+  }
+}
 
 
 
@@ -733,6 +862,11 @@ function setBlindness(active) {
 
 // Барьер (визуал)
 let shieldMesh = null;
+let spellBookOpen = false;
+let spellBookElement = null;
+let spellBookContent = null;
+let currentPage = 0;
+const SPELLS_PER_PAGE = 8;
 
 net.on('init', (m) => {
   myId = m.id;
@@ -945,6 +1079,7 @@ chatInput.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     chatInput.blur();
     chatFocused = false;
+    closeSpellBook();
     e.preventDefault();
   }
 });
@@ -1051,6 +1186,12 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     return;
   }
+  if (e.code === 'KeyH') {
+  e.preventDefault();
+  if (spellBookOpen) closeSpellBook();
+  else openSpellBook();
+  return;
+  }
   if (e.code === 'Slash') {
     chatInput.focus();
     chatInput.value = '/';
@@ -1080,6 +1221,17 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('keyup', (e) => keys.delete(e.code));
 document.addEventListener('wheel', (e) => {
   if (invOpen || combatMode) return;
+  if (spellBookOpen) {
+  if (e.deltaY > 0) {
+    if ((currentPage+1)*SPELLS_PER_PAGE < SPELL_COMBINATIONS.length) currentPage++;
+    else currentPage = 0;
+  } else {
+    if (currentPage > 0) currentPage--;
+    else currentPage = Math.ceil(SPELL_COMBINATIONS.length/SPELLS_PER_PAGE)-1;
+  }
+  renderSpellBook();
+  e.preventDefault();
+  return;}
   selectedSlot = (selectedSlot + (e.deltaY > 0 ? 1 : -1) + 9) % 9;
   refreshUI();
 });
@@ -1462,7 +1614,7 @@ function animate(now) {
     const ready = world.getChunk(
       Math.floor(player.pos.x / CHUNK_SIZE),
       Math.floor(player.pos.z / CHUNK_SIZE));
-    if (ready && !chatFocused && !settingsOpen) updatePlayer(dt);
+    if (ready && !chatFocused && !settingsOpen && !spellBookOpen) updatePlayer(dt);
     updateRemotePlayers(dt);
 
     for (const pr of projectiles.values()) {
