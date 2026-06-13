@@ -275,7 +275,7 @@ function isChunkInView(cx, cz, playerPos, yaw, fovDegrees = 140) {
     const angleToChunk = Math.atan2(dz, dx);
     // Направление взгляда: yaw – это угол поворота по горизонтали (в радианах, 0 – взгляд на +Z)
     const viewAngle = -yaw;
-    let diff = Math.abs(angleToChunk - viewAngle);
+    let diff = Math.abs(angleToChunk - viewAngle+90);
     diff = Math.min(Math.abs(diff), Math.PI * 2 - Math.abs(diff));
     const halfFovRad = (fovDegrees * Math.PI) / 180 / 2;
     return diff < halfFovRad;
