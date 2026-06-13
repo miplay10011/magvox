@@ -4,7 +4,6 @@ import { World, buildChunkMesh, buildLODMesh, AIR, BLOCK_COLORS, CHUNK_SIZE,
 import { Network } from './network.js';
 import { createMagicEngine } from './magic.js';
 import { initParticles, spawnParticles, updateParticles } from './particles.js';
-import { initInventory, toggleInventory, addItem, refreshUI, selectedSlot, inventory, held, invOpen, clickSlot } from './inventory.js';
 
 // ========== Рендер ==========
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -16,6 +15,7 @@ const scene = new THREE.Scene();
 initParticles(scene);  
 scene.background = new THREE.Color(0x87ceeb);
 scene.fog = new THREE.Fog(0x87ceeb, 400, 1400);
+
 
 const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 1500);
 camera.rotation.order = 'YXZ';
@@ -101,6 +101,11 @@ function toggleSettings(open) {
         }
     }
 }
+
+// ========== Партиклы ==========
+
+
+
 
 // ========== Игрок ==========
 const PLAYER = { width: 0.6, height: 1.8, eye: 1.62 };
@@ -621,6 +626,7 @@ const EVENTS = {
     }
   },
   totemPower: (m) => {
+    // визуально – вспышка на цели
     const target = remotePlayers.get(m.targetId);
     if (target) {
       spawnParticles(target.group.position.x, target.group.position.y + 1, target.group.position.z, 0xffdd88, 15, 1, 0.3);
@@ -642,6 +648,7 @@ const EVENTS = {
     const asteroid = new THREE.Mesh(geo, mat);
     asteroid.position.set(m.x, m.startY, m.z);
     scene.add(asteroid);
+    // анимация падения
     let t = 0;
     const fall = setInterval(() => {
       t += 0.05;
@@ -785,6 +792,7 @@ net.on('effects', (m) => {
   }
   // Теневые оковы: фиксация обзора на сервере – добавим клиентский эффект
   if (activeEffects.has('shadow_shackles')) {
+    // заблокируем поворот камеры
     document.body.style.pointerEvents = 'none';
     setTimeout(() => document.body.style.pointerEvents = '', 6000);
   }
@@ -942,7 +950,6 @@ chatInput.addEventListener('keydown', (e) => {
 });
 
 createSettingsMenu();
-initInventory();   // Инициализация инвентаря
 
 // ========== Оффлайн-магия ==========
 let localMagic = null;
@@ -1017,7 +1024,6 @@ renderer.domElement.addEventListener('click', () => {
 document.addEventListener('mousemove', (e) => {
   if (document.pointerLockElement !== renderer.domElement) return;
   if (settingsOpen) return;
-  if (activeEffects.has('shadow_shackles')) return;
   yaw   -= e.movementX * SENS;
   pitch -= e.movementY * SENS;
   const lim = Math.PI / 2 - 0.01;
@@ -1164,6 +1170,7 @@ function updatePlayer(dt) {
   if (effectActive('slow'))   speedMul *= 0.5;
   if (effectActive('freeze')) speedMul = 0;
 
+  // Прыгучесть
   let jumpPower = JUMP_SPEED;
   if (effectActive('jump_boost')) jumpPower *= 1.5;
 
@@ -1199,6 +1206,7 @@ function updatePlayer(dt) {
     moveAxis(dt, 'z');
   }
 
+  // Невесомость (двойной прыжок, медленное падение)
   if (effectActive('weightless')) {
     if (!player.flying && !player.onGround && player.vel.y < 0) player.vel.y *= 0.98;
     if (keys.has('Space') && !player.onGround && !player.doubleJumpUsed) {
@@ -1259,6 +1267,29 @@ function intersectsPlayer(bx, by, bz) {
          by + 1 > player.pos.y        && by < player.pos.y + PLAYER.height &&
          bz + 1 > player.pos.z - half && bz < player.pos.z + half;
 }
+
+// ========== Инвентарь ==========
+
+
+refreshUI();
+
+
+function toggleInventory() {
+  invOpen = !invOpen;
+  invEl.classList.toggle('open', invOpen);
+  if (invOpen) {
+    document.exitPointerLock();
+    keys.clear();
+  } else {
+    if (held) {
+      for (let n = held.count; n > 0; n--) addItem(held.type);
+      held = null;
+    }
+    if (!settingsOpen) renderer.domElement.requestPointerLock();
+  }
+  refreshUI();
+}
+invEl.addEventListener('contextmenu', (e) => e.preventDefault());
 
 // ========== Действия мыши ==========
 document.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -1343,5 +1374,4 @@ function animate(now) {
   }
   renderer.render(scene, camera);
 }
-
 requestAnimationFrame(animate);
