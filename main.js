@@ -273,8 +273,7 @@ const player = {
 let yaw = 0, pitch = 0;
 
 
-javascript
-Editor
+
 // ========== Мир + менеджер чанков (оптимизированный) ==========
 let world = null;
 const FULL_RADIUS = 6;          // было 9 — в 2.3 раза меньше full-чанков
