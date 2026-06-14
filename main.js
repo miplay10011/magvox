@@ -272,29 +272,29 @@ const player = {
 };
 let yaw = 0, pitch = 0;
 
-// ========== Мир + менеджер чанков ==========
+
+javascript
+Editor
+// ========== Мир + менеджер чанков (оптимизированный) ==========
 let world = null;
-const FULL_RADIUS = 9;
+const FULL_RADIUS = 6;          // было 9 — в 2.3 раза меньше full-чанков
 const LOD_RINGS = [
-  { level: 2, radius: 20 },
-  { level: 3, radius: 48 },
+  { level: 2, radius: 16 },     // было 20
+  { level: 3, radius: 30 },     // было 48
 ];
-const FULL_BUDGET = 8;
-const LOD_BUDGET = 6;
+const FULL_BUDGET = 2;          // макс. новых чанков за тик (было 8)
+const LOD_BUDGET  = 2;          // было 6
 const lodMeshes = new Map();
 
+// Очередь чанков, которым нужен ремеш (соседи новых чанков)
+const dirtyChunks = new Set();
+let lastChunkCX = Infinity, lastChunkCZ = Infinity;
+
 function remeshChunk(chunk) {
+  if (!chunk) return;
   if (chunk.mesh) { scene.remove(chunk.mesh); chunk.mesh.geometry.dispose(); }
   chunk.mesh = buildChunkMesh(world, chunk);
   scene.add(chunk.mesh);
-}
-
-function startWorld(seed, edits = []) {
-  world = new World(seed);
-  for (const [key, t] of edits) world.edits.set(key, t);
-  player.pos.set(0.5, world.terrainHeight(0, 0) + 1, 0.5);
-  player.vel.set(0, 0, 0);
-  chunkManagerTick();
 }
 
 function chunkManagerTick() {
@@ -302,53 +302,98 @@ function chunkManagerTick() {
   const pcx = Math.floor(player.pos.x / CHUNK_SIZE);
   const pcz = Math.floor(player.pos.z / CHUNK_SIZE);
 
-  const wantFull = new Set(), missing = [];
+  // --- 1. Отложенный ремеш соседей (не более 3 за тик) ---
+  let dirtyBudget = 3;
+  for (const chunk of dirtyChunks) {
+    if (dirtyBudget-- <= 0) break;
+    dirtyChunks.delete(chunk);
+    remeshChunk(chunk);
+  }
+
+  // --- 2. Full чанки ---
+  const wantFull = new Set();
+  const missing = [];
   for (let dx = -FULL_RADIUS; dx <= FULL_RADIUS; dx++)
     for (let dz = -FULL_RADIUS; dz <= FULL_RADIUS; dz++) {
       const cx = pcx + dx, cz = pcz + dz;
-      wantFull.add(world.key(cx, cz));
-      if (!world.getChunk(cx, cz)) missing.push([cx, cz, dx * dx + dz * dz]);
+      const key = world.key(cx, cz);
+      wantFull.add(key);
+      if (!world.getChunk(cx, cz))
+        missing.push([cx, cz, dx * dx + dz * dz]);
     }
-  missing.sort((a, b) => a[2] - b[2]);
-  for (const [cx, cz] of missing.slice(0, FULL_BUDGET)) {
-    remeshChunk(world.generateChunk(cx, cz));
-    for (const [nx, nz] of [[cx + 1, cz], [cx - 1, cz], [cx, cz + 1], [cx, cz - 1]]) {
-      const nb = world.getChunk(nx, nz);
-      if (nb?.mesh) remeshChunk(nb);
-    }
-  }
-  for (const [key, c] of world.chunks) {
-    if (wantFull.has(key)) continue;
+
+  // Удаляем далёкие чанки (собираем ключи отдельно, чтобы не ломать итератор)
+  const toDelete = [];
+  for (const [key, c] of world.chunks)
+    if (!wantFull.has(key)) toDelete.push([key, c]);
+  for (const [key, c] of toDelete) {
     if (c.mesh) { scene.remove(c.mesh); c.mesh.geometry.dispose(); }
+    dirtyChunks.delete(c);
     world.chunks.delete(key);
   }
 
-  const wantLod = new Set(), lodMissing = [];
-  let inner = FULL_RADIUS;
-  for (const { level, radius } of LOD_RINGS) {
-    const s = 1 << level;
-    for (let gx = Math.floor((pcx - radius) / s); gx <= Math.floor((pcx + radius) / s); gx++)
-      for (let gz = Math.floor((pcz - radius) / s); gz <= Math.floor((pcz + radius) / s); gz++) {
-        const d = Math.max(Math.abs(gx * s + s / 2 - pcx), Math.abs(gz * s + s / 2 - pcz));
-        if (d > radius || d <= inner) continue;
-        const key = `${level}:${gx},${gz}`;
-        wantLod.add(key);
-        if (!lodMeshes.has(key)) lodMissing.push([key, gx, gz, level, d]);
-      }
-    inner = radius;
+  // Генерируем ближайшие чанки первыми, но не более FULL_BUDGET за раз
+  missing.sort((a, b) => a[2] - b[2]);
+  let genBudget = FULL_BUDGET;
+  for (const [cx, cz] of missing) {
+    if (genBudget-- <= 0) break;
+    const chunk = world.generateChunk(cx, cz);
+    remeshChunk(chunk);
+    // Помечаем соседей грязными вместо немедленного ремеша
+    for (const [nx, nz] of [[cx + 1, cz], [cx - 1, cz], [cx, cz + 1], [cx, cz - 1]]) {
+      const nb = world.getChunk(nx, nz);
+      if (nb) dirtyChunks.add(nb);
+    }
   }
-  lodMissing.sort((a, b) => a[4] - b[4]);
-  for (const [key, gx, gz, level] of lodMissing.slice(0, LOD_BUDGET)) {
-    const mesh = buildLODMesh(world, gx, gz, level);
-    lodMeshes.set(key, mesh);
-    scene.add(mesh);
+
+  // --- 3. LOD — пересчитываем только если игрок сменил чанк ---
+  if (pcx !== lastChunkCX || pcz !== lastChunkCZ) {
+    const wantLod = new Set();
+    const lodMissing = [];
+    let inner = FULL_RADIUS;
+    for (const { level, radius } of LOD_RINGS) {
+      const s = 1 << level;
+      const minGx = Math.floor((pcx - radius) / s);
+      const maxGx = Math.floor((pcx + radius) / s);
+      const minGz = Math.floor((pcz - radius) / s);
+      const maxGz = Math.floor((pcz + radius) / s);
+      for (let gx = minGx; gx <= maxGx; gx++)
+        for (let gz = minGz; gz <= maxGz; gz++) {
+          const d = Math.max(
+            Math.abs(gx * s + s / 2 - pcx),
+            Math.abs(gz * s + s / 2 - pcz)
+          );
+          if (d > radius || d <= inner) continue;
+          const key = `${level}:${gx},${gz}`;
+          wantLod.add(key);
+          if (!lodMeshes.has(key)) lodMissing.push([key, gx, gz, level, d]);
+        }
+      inner = radius;
+    }
+
+    // Удаляем старые LOD
+    for (const [key, mesh] of lodMeshes) {
+      if (wantLod.has(key)) continue;
+      scene.remove(mesh); mesh.geometry.dispose(); lodMeshes.delete(key);
+    }
+
+    // Создаём новые LOD
+    lodMissing.sort((a, b) => a[4] - b[4]);
+    let lodGen = LOD_BUDGET;
+    for (const [key, gx, gz, level] of lodMissing) {
+      if (lodGen-- <= 0) break;
+      const mesh = buildLODMesh(world, gx, gz, level);
+      lodMeshes.set(key, mesh);
+      scene.add(mesh);
+    }
   }
-  for (const [key, mesh] of lodMeshes) {
-    if (wantLod.has(key)) continue;
-    scene.remove(mesh); mesh.geometry.dispose(); lodMeshes.delete(key);
-  }
+
+  lastChunkCX = pcx;
+  lastChunkCZ = pcz;
 }
-setInterval(chunkManagerTick, 250);
+
+// Чуть чаще, но работаем маленькими порциями — не лагает
+setInterval(chunkManagerTick, 100);
 
 // ========== Статы и эффекты ==========
 const stats = { hp: 50, armor: 0, mana: 20, maxMana: 20 };
