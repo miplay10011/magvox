@@ -22,6 +22,7 @@ const httpServer = http.createServer((req, res) => {
 });
 
 const AIR=0, GRASS=1, DIRT=2, STONE=3, WOOD=4, LEAVES=5, PLANKS=6, SAND=7, GRAVEL=8, COAL_ORE=9, IRON_ORE=10;
+const ICE=11, SNOW_BLOCK=12, CACTUS=13;
 
 const ADJECTIVES = ["Весёлый","Храбрый","Тихий","Быстрый","Умный","Смелый","Добрый","Злой","Магический","Ледяной","Огненный","Тёмный","Светлый","Летающий","Подземный","Древний","Могучий"];
 const NOUNS = ["Волшебник","Маг","Чародей","Колдун","Шаман","Друид","Некромант","Иллюзионист","Алхимик","Варлок","Магистр","Архимаг","Мистик","Заклинатель"];
@@ -54,6 +55,18 @@ function noise(x,y,z){
 }
 
 let seed;
+function getBiome(wx, wz){
+  const val = noise(wx*0.005+seed, wz*0.005+seed, 300);
+  const val2 = noise(wx*0.01+seed, wz*0.01+seed, 400);
+  if (val < -0.35) return 'desert';
+  if (val > 0.45) return 'mountain';
+  if (val2 < -0.3) return 'ice';
+  if (val2 > 0.3 && val < 0.1) return 'swamp';
+  if (val > -0.1 && val < 0.2 && val2 > -0.1 && val2 < 0.2) return 'savanna';
+  if (val2 < -0.1 && val > 0.1) return 'snow';
+  return 'forest';
+}
+
 function terrainHeight(wx, wz){
   let h = 24;
   h += noise(wx/80+seed, wz/80+seed, 0)   * 16;
@@ -67,18 +80,23 @@ function terrainHeight(wx, wz){
     h += noise(wx/20+seed, wz/20+seed, 150) * 20;
     h += Math.abs(noise(wx/6+seed, wz/6+seed, 250)) * 12;
     h = Math.max(45, Math.min(63, h));
+  } else if (biome === 'ice') {
+    h = 26 + noise(wx/40+seed, wz/40+seed, 500) * 4;
+    h = Math.max(20, Math.min(30, h));
+  } else if (biome === 'snow') {
+    h = 28 + noise(wx/35+seed, wz/35+seed, 550) * 5;
+    h = Math.max(22, Math.min(35, h));
+  } else if (biome === 'swamp') {
+    h = 22 + noise(wx/25+seed, wz/25+seed, 600) * 3;
+    h = Math.max(18, Math.min(28, h));
+  } else if (biome === 'savanna') {
+    h = 30 + noise(wx/30+seed, wz/30+seed, 650) * 6;
+    h = Math.max(26, Math.min(40, h));
   } else {
     h += noise(wx/25+seed, wz/25+seed, 300) * 6;
     h = Math.max(20, Math.min(50, h));
   }
   return Math.max(1, Math.min(63, Math.floor(h)));
-}
-
-function getBiome(wx, wz){
-  const val = noise(wx*0.005+seed, wz*0.005+seed, 300);
-  if (val < -0.25) return 'desert';
-  if (val > 0.35) return 'mountain';
-  return 'forest';
 }
 
 const heightCache = new Map();
@@ -102,7 +120,13 @@ function getBlockType(x, y, z){
   if (edits.has(key)) return edits.get(key);
   const h = getCachedHeight(x, z);
   if (y >= h) return AIR;
-  if (y === h - 1) return getCachedBiome(x, z) === 'desert' ? SAND : GRASS;
+  if (y === h - 1) {
+    const biome = getCachedBiome(x, z);
+    if (biome === 'desert') return SAND;
+    if (biome === 'ice') return ICE;
+    if (biome === 'snow') return SNOW_BLOCK;
+    return GRASS;
+  }
   if (y >= h - 4) return DIRT;
   if (y < 40 && noise(x*0.1, y*0.1, z*0.1) > 0.85) return IRON_ORE;
   if (y < 60 && noise(x*0.12, y*0.12, z*0.12) > 0.7) return COAL_ORE;
@@ -148,13 +172,20 @@ const edits = new Map();
 const players = new Map();
 let nextId = 1;
 
+// Предгенерация деревьев и кактусов
 for (let cx=-20; cx<=20; cx++){
   for (let cz=-20; cz<=20; cz++){
-    if (Math.random()<0.1){
-      const centerX = cx*16+8, centerZ = cz*16+8;
-      if (getCachedBiome(centerX, centerZ)==='forest'){
-        const groundY = getCachedHeight(centerX, centerZ);
-        if (groundY < 55) generateBigTree(edits, centerX, centerZ, groundY);
+    const centerX = cx*16+8, centerZ = cz*16+8;
+    const biome = getCachedBiome(centerX, centerZ);
+    if ((biome === 'forest' || biome === 'swamp' || biome === 'savanna') && Math.random()<0.1){
+      const groundY = getCachedHeight(centerX, centerZ);
+      if (groundY < 55 && groundY > 2) generateBigTree(edits, centerX, centerZ, groundY);
+    }
+    if (biome === 'desert' && Math.random()<0.08){
+      const groundY = getCachedHeight(centerX, centerZ);
+      const cactusHeight = 1 + Math.floor(Math.random()*3);
+      for (let h=0; h<cactusHeight; h++){
+        edits.set(`${centerX},${groundY+h},${centerZ}`, CACTUS);
       }
     }
   }
@@ -173,9 +204,7 @@ function applyDamage(targetId, dmg, src={}){
   if (!target) return;
   const attackerId = src.attackerId;
   const attacker = attackerId ? players.get(attackerId) : null;
-  if (src.weapon?.includes('огн') && target.effects.has('fire_resist')){
-    dmg *= (1 - target.effects.get('fire_resist').power);
-  }
+  if (src.weapon?.includes('огн') && target.effects.has('fire_resist')) dmg *= (1 - target.effects.get('fire_resist').power);
   if (target.effects.has('vulnerability')) dmg *= 1.5;
   if (target.effects.has('weakness')) dmg *= 0.5;
   const ward = target.effects.get('ward');
@@ -246,7 +275,6 @@ function addZone(x,z,radius,effect,ownerId,duration){
   setTimeout(()=>activeZones.delete(id), duration*1000);
   broadcast('zoneSpawn',{id,x,z,radius,effect,duration});
 }
-
 const timeSlowZones = new Map();
 function addTimeSlowZone(casterId,x,z,radius,duration){
   const id = Math.random();
@@ -254,7 +282,6 @@ function addTimeSlowZone(casterId,x,z,radius,duration){
   broadcast('timeSlowZone',{zoneId:id,x,z,radius,duration});
   setTimeout(()=>timeSlowZones.delete(id), duration*1000);
 }
-
 const activeTotems = new Map();
 function addTotem(casterId,x,z,radius,duration){
   const id = Math.random();
@@ -303,30 +330,24 @@ function performShadowStep(casterId){
   }
 }
 
-// ===== Batch broadcast для блоков (взрывы не лагают) =====
 let pendingBlocks = [];
 let pendingTimer = null;
-
 function queueBlockUpdate(x,y,z,t){
   edits.set(`${x},${y},${z}`, t);
   pendingBlocks.push({x,y,z,t});
   if (!pendingTimer) pendingTimer = setTimeout(flushBlockBroadcasts, 0);
 }
-
 function flushBlockBroadcasts(){
   const blocks = pendingBlocks;
   pendingBlocks = [];
   pendingTimer = null;
-  if (blocks.length === 1){
-    broadcast('blockUpdate', blocks[0]);
-  } else if (blocks.length > 1){
-    broadcast('blocksUpdate', { blocks });
-  }
+  if (blocks.length === 1) broadcast('blockUpdate', blocks[0]);
+  else if (blocks.length > 1) broadcast('blocksUpdate', { blocks });
 }
 
 const magicCtx = {
-  getBlock:(x,y,z)=>getBlockType(x,y,z),
-  setBlock:(x,y,z,t)=>queueBlockUpdate(x,y,z,t),
+  getBlock:getBlockType,
+  setBlock:queueBlockUpdate,
   terrainHeight:getCachedHeight,
   getPlayers:()=>[...players].map(([id,q])=>[id,{x:q.x,y:q.y,z:q.z}]),
   applyDamage,
@@ -426,7 +447,7 @@ const magicCtx = {
             }
           }
         }
-        flushBlockBroadcasts(); // сразу сбросить буфер взрыва
+        flushBlockBroadcasts();
         broadcast('asteroidImpact',{x:impactX,z:impactZ,radius:rad});
       };
       explode(impactX,0,impactZ,radius,dmg,casterId);
@@ -510,6 +531,19 @@ setInterval(()=>{
       q.burnAcc = (q.burnAcc||0)+dt;
       if (q.burnAcc >= 1){ q.burnAcc -= 1; applyDamage(id,burn.power,{kb:0}); }
     }
+
+    // Урон от кактуса
+    const bx = Math.floor(q.x);
+    const by = Math.floor(q.y);
+    const bz = Math.floor(q.z);
+    const blockUnder = getBlockType(bx, by, bz);
+    if (blockUnder === CACTUS || getBlockType(bx, by-1, bz) === CACTUS) {
+      if (!q.cactusCooldown || now - q.cactusCooldown > 500) {
+        q.cactusCooldown = now;
+        applyDamage(id, 1, { ax: q.x, az: q.z, kb: 0, weapon: 'кактуса' });
+      }
+    }
+
     if (changed) syncEffects(q);
     q.mana = Math.min(20, q.mana + dt);
   }

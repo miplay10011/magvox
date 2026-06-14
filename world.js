@@ -6,6 +6,9 @@ export const WORLD_HEIGHT = 64;
 export const AIR = 0;
 export const GRASS = 1, DIRT = 2, STONE = 3, WOOD = 4, LEAVES = 5;
 export const PLANKS = 6, SAND = 7, GRAVEL = 8, COAL_ORE = 9, IRON_ORE = 10;
+export const ICE = 11;
+export const SNOW_BLOCK = 12;
+export const CACTUS = 13;
 
 export const BLOCK_COLORS = {
   [GRASS]: new THREE.Color(0x7cb518), [DIRT]:  new THREE.Color(0x8b5a2b),
@@ -13,14 +16,16 @@ export const BLOCK_COLORS = {
   [LEAVES]: new THREE.Color(0x2e7d32), [PLANKS]: new THREE.Color(0xc99e6f),
   [SAND]:  new THREE.Color(0xf4e2b9), [GRAVEL]: new THREE.Color(0x9e9e9e),
   [COAL_ORE]: new THREE.Color(0x2c2c2c), [IRON_ORE]: new THREE.Color(0xb87333),
+  [ICE]: new THREE.Color(0x88ccff),
+  [SNOW_BLOCK]: new THREE.Color(0xf0f0f0),
+  [CACTUS]: new THREE.Color(0x2c5e1a),
 };
 export const CHUNK_MATERIAL = new THREE.MeshLambertMaterial({ vertexColors: true });
 
-// ---------- Binary color & normal caches ----------
-const CR = new Float32Array(11);
-const CG = new Float32Array(11);
-const CB = new Float32Array(11);
-for (let i = 1; i <= 10; i++) {
+const CR = new Float32Array(14);
+const CG = new Float32Array(14);
+const CB = new Float32Array(14);
+for (let i = 1; i <= 13; i++) {
   const c = BLOCK_COLORS[i];
   CR[i] = c.r; CG[i] = c.g; CB[i] = c.b;
 }
@@ -54,6 +59,18 @@ export class World {
     return c ? c.get(wx - cx * CHUNK_SIZE, wy, wz - cz * CHUNK_SIZE) : AIR;
   }
 
+  getBiome(wx, wz) {
+    const val = this.noise.noise(wx * 0.005 + this.seed, wz * 0.005 + this.seed, 300);
+    const val2 = this.noise.noise(wx * 0.01 + this.seed, wz * 0.01 + this.seed, 400);
+    if (val < -0.35) return 'desert';
+    if (val > 0.45) return 'mountain';
+    if (val2 < -0.3) return 'ice';
+    if (val2 > 0.3 && val < 0.1) return 'swamp';
+    if (val > -0.1 && val < 0.2 && val2 > -0.1 && val2 < 0.2) return 'savanna';
+    if (val2 < -0.1 && val > 0.1) return 'snow';
+    return 'forest';
+  }
+
   terrainHeight(wx, wz) {
     const s = this.seed;
     let h = 24;
@@ -68,6 +85,18 @@ export class World {
       h += this.noise.noise(wx / 20 + s, wz / 20 + s, 150) * 20;
       h += Math.abs(this.noise.noise(wx / 6 + s, wz / 6 + s, 250)) * 12;
       h = Math.max(45, Math.min(63, h));
+    } else if (biome === 'ice') {
+      h = 26 + this.noise.noise(wx / 40 + s, wz / 40 + s, 500) * 4;
+      h = Math.max(20, Math.min(30, h));
+    } else if (biome === 'snow') {
+      h = 28 + this.noise.noise(wx / 35 + s, wz / 35 + s, 550) * 5;
+      h = Math.max(22, Math.min(35, h));
+    } else if (biome === 'swamp') {
+      h = 22 + this.noise.noise(wx / 25 + s, wz / 25 + s, 600) * 3;
+      h = Math.max(18, Math.min(28, h));
+    } else if (biome === 'savanna') {
+      h = 30 + this.noise.noise(wx / 30 + s, wz / 30 + s, 650) * 6;
+      h = Math.max(26, Math.min(40, h));
     } else {
       h += this.noise.noise(wx / 25 + s, wz / 25 + s, 300) * 6;
       h = Math.max(20, Math.min(50, h));
@@ -75,26 +104,18 @@ export class World {
     return Math.max(1, Math.min(WORLD_HEIGHT - 1, Math.floor(h)));
   }
 
-  getBiome(wx, wz) {
-    const val = this.noise.noise(wx * 0.005 + this.seed, wz * 0.005 + this.seed, 300);
-    if (val < -0.25) return 'desert';
-    if (val > 0.35) return 'mountain';
-    return 'forest';
-  }
-
   generateChunk(cx, cz) {
     const chunk = new Chunk(cx, cz);
     const ox = cx * CHUNK_SIZE, oz = cz * CHUNK_SIZE;
 
     const heights = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE);
-    const biomes  = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE);
+    const biomes = new Array(CHUNK_SIZE * CHUNK_SIZE);
 
     for (let z = 0; z < CHUNK_SIZE; z++) {
       for (let x = 0; x < CHUNK_SIZE; x++) {
         const wx = ox + x, wz = oz + z;
         heights[x + z * CHUNK_SIZE] = this.terrainHeight(wx, wz);
-        const b = this.getBiome(wx, wz);
-        biomes[x + z * CHUNK_SIZE] = b === 'desert' ? 1 : (b === 'mountain' ? 2 : 0);
+        biomes[x + z * CHUNK_SIZE] = this.getBiome(wx, wz);
       }
     }
 
@@ -106,7 +127,12 @@ export class World {
         for (let y = 0; y < height; y++) {
           let block = STONE;
           if (y === height - 1) {
-            block = biome === 1 ? SAND : GRASS;
+            if (biome === 'desert') block = SAND;
+            else if (biome === 'ice') block = ICE;
+            else if (biome === 'snow') block = SNOW_BLOCK;
+            else if (biome === 'swamp') block = GRASS;
+            else if (biome === 'savanna') block = GRASS;
+            else block = GRASS;
           } else if (y >= height - 4) {
             block = DIRT;
           } else {
@@ -117,15 +143,34 @@ export class World {
           }
           chunk.set(x, y, z, block);
         }
-        if (biome === 1 && height < WORLD_HEIGHT - 1 && Math.random() < 0.3) {
-          chunk.set(x, height, z, SAND);
+        // Доп. слой снега на снежном биоме
+        if (biome === 'snow' && height < WORLD_HEIGHT - 1 && Math.random() < 0.4) {
+          chunk.set(x, height, z, SNOW_BLOCK);
+        }
+        // Кактусы в пустыне
+        if (biome === 'desert' && Math.random() < 0.08) {
+          const cactusHeight = 1 + Math.floor(Math.random() * 3);
+          for (let h = 0; h < cactusHeight; h++) {
+            const yy = height + h;
+            if (yy < WORLD_HEIGHT) {
+              chunk.set(x, yy, z, CACTUS);
+            }
+          }
         }
       }
     }
 
-    if (biomes[8 + 8 * CHUNK_SIZE] === 0 && Math.random() < 0.1) {
-      const groundY = heights[8 + 8 * CHUNK_SIZE];
-      if (groundY < 55) this.generateBigTree(chunk, 8, 8, groundY);
+    // Деревья (лес, болото, саванна)
+    for (let x = 0; x < CHUNK_SIZE; x += 2) {
+      for (let z = 0; z < CHUNK_SIZE; z += 2) {
+        const biome = biomes[x + z * CHUNK_SIZE];
+        if ((biome === 'forest' || biome === 'swamp' || biome === 'savanna') && Math.random() < 0.1) {
+          const groundY = heights[x + z * CHUNK_SIZE];
+          if (groundY < 55 && groundY > 2) {
+            this.generateBigTree(chunk, x, z, groundY);
+          }
+        }
+      }
     }
 
     for (const [key, t] of this.edits) {
@@ -195,8 +240,11 @@ export class World {
   }
 }
 
-// ---------- Greedy meshing (zero-allocation hot path) ----------
+// buildChunkMesh (остаётся без изменений, но массив CR/CB/CG уже 14)
 export function buildChunkMesh(world, chunk) {
+  // ... (код из предыдущего сообщения, без изменений)
+  // Нужно только обновить размеры массивов: MAX_QUADS и т.д. не меняются.
+  // В коде используется CR[type] – тип до 13, всё работает.
   const wx0 = chunk.cx * CHUNK_SIZE, wz0 = chunk.cz * CHUNK_SIZE;
   const c0 = chunk.blocks;
   const cXm = world.getChunk(chunk.cx - 1, chunk.cz)?.blocks;
@@ -324,20 +372,18 @@ export function buildChunkMesh(world, chunk) {
   return mesh;
 }
 
-// ---------- LOD superchunk: 4x4 chunks (64x64 blocks) merged ----------
 export function buildLODChunkMesh(world, scx, scz) {
-  const SUPER = 4;         // 1 superchunk = 4 ordinary chunks
-  const SCALE = 4;         // 1 LOD column = 4 ordinary blocks
-  const COLS = (CHUNK_SIZE * SUPER) / SCALE; // 16 columns per side
-  const SIZE = CHUNK_SIZE * SUPER;           // 64 blocks total
+  const SUPER = 4;
+  const SCALE = 4;
+  const COLS = (CHUNK_SIZE * SUPER) / SCALE;
+  const SIZE = CHUNK_SIZE * SUPER;
 
   const positions = [], normals = [], colors = [], indices = [];
   const wx0 = scx * SIZE;
   const wz0 = scz * SIZE;
 
-  // Precompute heights and surface types
   const heights = new Float32Array(COLS * COLS);
-  const colData = new Uint8Array(COLS * COLS); // 0 forest, 1 desert, 2 mountain
+  const colData = new Uint8Array(COLS * COLS);
 
   for (let lz = 0; lz < COLS; lz++) {
     for (let lx = 0; lx < COLS; lx++) {
@@ -346,13 +392,24 @@ export function buildLODChunkMesh(world, scx, scz) {
       const hRaw = world.terrainHeight(wx, wz);
       heights[lx + lz * COLS] = Math.max(1, Math.min(WORLD_HEIGHT - 1, Math.floor(hRaw)));
       const biome = world.getBiome(wx, wz);
-      colData[lx + lz * COLS] = biome === 'desert' ? 1 : (biome === 'mountain' ? 2 : 0);
+      let biomeVal = 0;
+      if (biome === 'desert') biomeVal = 1;
+      else if (biome === 'mountain') biomeVal = 2;
+      else if (biome === 'snow') biomeVal = 3;
+      else if (biome === 'ice') biomeVal = 4;
+      else if (biome === 'swamp') biomeVal = 5;
+      else if (biome === 'savanna') biomeVal = 6;
+      colData[lx + lz * COLS] = biomeVal;
     }
   }
 
   const getColor = (t) => {
     if (t === 1) return BLOCK_COLORS[SAND];
     if (t === 2) return BLOCK_COLORS[STONE];
+    if (t === 3) return BLOCK_COLORS[SNOW_BLOCK];
+    if (t === 4) return BLOCK_COLORS[ICE];
+    if (t === 5) return new THREE.Color(0x6b4c3b); // болото – грязь
+    if (t === 6) return new THREE.Color(0xcdb38c); // саванна – сухая трава
     return BLOCK_COLORS[GRASS];
   };
 
@@ -363,7 +420,7 @@ export function buildLODChunkMesh(world, scx, scz) {
     indices.push(base, base+1, base+2, base, base+2, base+3);
   }
 
-  // --- TOP FACES ---
+  // Top faces
   for (let lz = 0; lz < COLS; lz++) {
     for (let lx = 0; lx < COLS; lx++) {
       const idx = lx + lz * COLS;
@@ -377,7 +434,7 @@ export function buildLODChunkMesh(world, scx, scz) {
     }
   }
 
-  // --- INTERNAL SIDE WALLS (between neighbouring columns) ---
+  // Internal walls
   for (let lz = 0; lz < COLS; lz++) {
     for (let lx = 0; lx < COLS; lx++) {
       const idx = lx + lz * COLS;
@@ -387,7 +444,6 @@ export function buildLODChunkMesh(world, scx, scz) {
       const z0 = wz0 + lz * SCALE;
       const x0 = wx0 + lx * SCALE;
 
-      // Wall to the right (+X neighbour)
       if (lx + 1 < COLS) {
         const hR = heights[(lx+1) + lz * COLS];
         if (h !== hR) {
@@ -395,16 +451,13 @@ export function buildLODChunkMesh(world, scx, scz) {
           const hMax = Math.max(h, hR);
           const c = h > hR ? getColor(colData[idx]) : getColor(colData[(lx+1)+lz*COLS]);
           if (h > hR) {
-            // normal +1,0,0 — wall belongs to current (higher) column
             addFace(xEdge, hMin, z0+SCALE, xEdge, hMin, z0, xEdge, hMax, z0, xEdge, hMax, z0+SCALE, 1,0,0, c);
           } else {
-            // normal -1,0,0 — belongs to right column
             addFace(xEdge, hMin, z0, xEdge, hMin, z0+SCALE, xEdge, hMax, z0+SCALE, xEdge, hMax, z0, -1,0,0, c);
           }
         }
       }
 
-      // Wall to the front (+Z neighbour)
       if (lz + 1 < COLS) {
         const hF = heights[lx + (lz+1) * COLS];
         if (h !== hF) {
@@ -412,10 +465,8 @@ export function buildLODChunkMesh(world, scx, scz) {
           const hMax = Math.max(h, hF);
           const c = h > hF ? getColor(colData[idx]) : getColor(colData[lx+(lz+1)*COLS]);
           if (h > hF) {
-            // normal 0,0,+1
             addFace(x0, hMin, zEdge, x0+SCALE, hMin, zEdge, x0+SCALE, hMax, zEdge, x0, hMax, zEdge, 0,0,1, c);
           } else {
-            // normal 0,0,-1
             addFace(x0+SCALE, hMin, zEdge, x0, hMin, zEdge, x0, hMax, zEdge, x0+SCALE, hMax, zEdge, 0,0,-1, c);
           }
         }
@@ -423,8 +474,7 @@ export function buildLODChunkMesh(world, scx, scz) {
     }
   }
 
-  // --- PERIMETER WALLS (outer edges of the superchunk, down to y=0) ---
-  // Left edge (x = wx0), facing -X
+  // Perimeter walls
   for (let lz = 0; lz < COLS; lz++) {
     const idx = 0 + lz * COLS;
     const h = heights[idx];
@@ -432,7 +482,6 @@ export function buildLODChunkMesh(world, scx, scz) {
     const z0 = wz0 + lz * SCALE;
     addFace(wx0, 0, z0, wx0, 0, z0+SCALE, wx0, h, z0+SCALE, wx0, h, z0, -1,0,0, c);
   }
-  // Right edge (x = wx0+SIZE), facing +X
   for (let lz = 0; lz < COLS; lz++) {
     const idx = (COLS-1) + lz * COLS;
     const h = heights[idx];
@@ -441,7 +490,6 @@ export function buildLODChunkMesh(world, scx, scz) {
     const xr = wx0 + SIZE;
     addFace(xr, 0, z0+SCALE, xr, 0, z0, xr, h, z0, xr, h, z0+SCALE, 1,0,0, c);
   }
-  // Back edge (z = wz0), facing -Z
   for (let lx = 0; lx < COLS; lx++) {
     const idx = lx + 0 * COLS;
     const h = heights[idx];
@@ -449,7 +497,6 @@ export function buildLODChunkMesh(world, scx, scz) {
     const x0 = wx0 + lx * SCALE;
     addFace(x0+SCALE, 0, wz0, x0, 0, wz0, x0, h, wz0, x0+SCALE, h, wz0, 0,0,-1, c);
   }
-  // Front edge (z = wz0+SIZE), facing +Z
   for (let lx = 0; lx < COLS; lx++) {
     const idx = lx + (COLS-1) * COLS;
     const h = heights[idx];

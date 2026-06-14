@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { World, buildChunkMesh, buildLODChunkMesh, AIR, BLOCK_COLORS, CHUNK_SIZE,
-         GRASS, DIRT, STONE, WOOD, LEAVES, PLANKS, SAND, GRAVEL, COAL_ORE, IRON_ORE } from './world.js';
+         GRASS, DIRT, STONE, WOOD, LEAVES, PLANKS, SAND, GRAVEL, COAL_ORE, IRON_ORE,
+         ICE, SNOW_BLOCK, CACTUS } from './world.js';
 import { Network } from './network.js';
 import { createMagicEngine } from './magic.js';
 import { initParticles, spawnParticles, updateParticles } from './particles.js';
@@ -1428,16 +1429,28 @@ function updatePlayer(dt) {
   if (keys.has('KeyA')) wish.sub(right);
   if (wish.lengthSq() > 0) wish.normalize();
 
+  // ===== НОВОЕ: скольжение по льду =====
+  let isOnIce = false;
+  const blockUnder = world.getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y - 0.1), Math.floor(player.pos.z));
+  if (blockUnder === ICE) isOnIce = true;
+
+  let walkSpeed = WALK_SPEED;
+  let decay = 0.03;
+  if (isOnIce) {
+    walkSpeed *= 1.5;       // быстрее разгон
+    decay = 0.01;           // почти не тормозит
+  }
+  walkSpeed *= speedMul;
+
   if (player.flying) {
     if (keys.has('Space'))     wish.y += 1;
     if (keys.has('ShiftLeft')) wish.y -= 1;
     player.pos.addScaledVector(wish, FLY_SPEED * speedMul * dt);
   } else {
-    player.vel.x = wish.x * WALK_SPEED * speedMul + player.knock.x;
-    player.vel.z = wish.z * WALK_SPEED * speedMul + player.knock.z;
-    const decay = Math.pow(0.03, dt);
-    player.knock.x *= decay;
-    player.knock.z *= decay;
+    player.vel.x = wish.x * walkSpeed + player.knock.x;
+    player.vel.z = wish.z * walkSpeed + player.knock.z;
+    player.knock.x *= Math.pow(decay, dt);
+    player.knock.z *= Math.pow(decay, dt);
 
     if (effectActive('levitate')) {
       player.vel.y = keys.has('Space') ? 4 : keys.has('ShiftLeft') ? -4 : 0;
@@ -1614,7 +1627,9 @@ function refreshUI() {
 }
 refreshUI();
 
-const ALL_BLOCK_TYPES = [GRASS, DIRT, STONE, WOOD, LEAVES, PLANKS, SAND, GRAVEL, COAL_ORE, IRON_ORE];
+// ===== НОВОЕ: добавляем новые блоки в массив для переработки =====
+const ALL_BLOCK_TYPES = [GRASS, DIRT, STONE, WOOD, LEAVES, PLANKS, SAND, GRAVEL, COAL_ORE, IRON_ORE, ICE, SNOW_BLOCK, CACTUS];
+
 function recycleItem() {
   const slot = inventory[36];
   if (!slot) {
