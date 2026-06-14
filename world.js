@@ -1,4 +1,3 @@
-// ===================== world.js =====================
 import * as THREE from 'three';
 import { ImprovedNoise } from 'three/addons/math/ImprovedNoise.js';
 
@@ -17,11 +16,26 @@ export const BLOCK_COLORS = {
 };
 export const CHUNK_MATERIAL = new THREE.MeshLambertMaterial({ vertexColors: true });
 
+// ---------- Binary color & normal caches ----------
+const CR = new Float32Array(11);
+const CG = new Float32Array(11);
+const CB = new Float32Array(11);
+for (let i = 1; i <= 10; i++) {
+  const c = BLOCK_COLORS[i];
+  CR[i] = c.r; CG[i] = c.g; CB[i] = c.b;
+}
+const NRM = new Float32Array([
+   1, 0, 0,  -1, 0, 0,
+   0, 1, 0,   0,-1, 0,
+   0, 0, 1,   0, 0,-1
+]);
+
 export class Chunk {
   constructor(cx, cz) {
     this.cx = cx; this.cz = cz;
     this.blocks = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT);
     this.mesh = null;
+    this.dirty = true;
   }
   index(x, y, z) { return x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE; }
   get(x, y, z)    { return this.blocks[this.index(x, y, z)]; }
@@ -77,15 +91,13 @@ export class World {
     const chunk = new Chunk(cx, cz);
     const ox = cx * CHUNK_SIZE, oz = cz * CHUNK_SIZE;
 
-    // Precompute heights & biomes once per x,z column
     const heights = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE);
-    const biomes  = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE); // 0 forest, 1 desert, 2 mountain
+    const biomes  = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE);
 
     for (let z = 0; z < CHUNK_SIZE; z++) {
       for (let x = 0; x < CHUNK_SIZE; x++) {
         const wx = ox + x, wz = oz + z;
-        const h = this.terrainHeight(wx, wz);
-        heights[x + z * CHUNK_SIZE] = h;
+        heights[x + z * CHUNK_SIZE] = this.terrainHeight(wx, wz);
         const b = this.getBiome(wx, wz);
         biomes[x + z * CHUNK_SIZE] = b === 'desert' ? 1 : (b === 'mountain' ? 2 : 0);
       }
@@ -103,7 +115,6 @@ export class World {
           } else if (y >= height - 4) {
             block = DIRT;
           } else {
-            block = STONE;
             if (y < 40 && this.noise.noise((ox + x) * 0.1, y * 0.1, (oz + z) * 0.1) > 0.85)
               block = IRON_ORE;
             else if (y < 60 && this.noise.noise((ox + x) * 0.12, y * 0.12, (oz + z) * 0.12) > 0.7)
@@ -189,19 +200,14 @@ export class World {
   }
 }
 
-// ---------- Greedy meshing (hot path optimized) ----------
+// ---------- Greedy meshing (zero-allocation hot path) ----------
 export function buildChunkMesh(world, chunk) {
-  const positions = [], normals = [], colors = [], indices = [];
-  const dims = [CHUNK_SIZE, WORLD_HEIGHT, CHUNK_SIZE];
   const wx0 = chunk.cx * CHUNK_SIZE, wz0 = chunk.cz * CHUNK_SIZE;
-
-  // Fast neighbor chunk access (avoid expensive Map lookups in hot loop)
-  const ncx = chunk.cx, ncz = chunk.cz;
   const c0 = chunk.blocks;
-  const cXm = world.getChunk(ncx - 1, ncz)?.blocks;
-  const cXp = world.getChunk(ncx + 1, ncz)?.blocks;
-  const cZm = world.getChunk(ncx, ncz - 1)?.blocks;
-  const cZp = world.getChunk(ncx, ncz + 1)?.blocks;
+  const cXm = world.getChunk(chunk.cx - 1, chunk.cz)?.blocks;
+  const cXp = world.getChunk(chunk.cx + 1, chunk.cz)?.blocks;
+  const cZm = world.getChunk(chunk.cx, chunk.cz - 1)?.blocks;
+  const cZp = world.getChunk(chunk.cx, chunk.cz + 1)?.blocks;
 
   const getTypeFast = (x, y, z) => {
     if (y < 0 || y >= WORLD_HEIGHT) return AIR;
@@ -213,40 +219,20 @@ export function buildChunkMesh(world, chunk) {
     return c0[x + z * CHUNK_SIZE + yy];
   };
 
-  function emitQuad(px, py, pz, du, dv, type, backface) {
-    const c = BLOCK_COLORS[type];
-    const base = positions.length / 3;
-    let nx = du[1] * dv[2] - du[2] * dv[1];
-    let ny = du[2] * dv[0] - du[0] * dv[2];
-    let nz = du[0] * dv[1] - du[1] * dv[0];
-    if (backface) { nx = -nx; ny = -ny; nz = -nz; }
-    const l = nx*nx + ny*ny + nz*nz;
-    if (l !== 0 && l !== 1) {
-      const inv = 1 / Math.sqrt(l);
-      nx *= inv; ny *= inv; nz *= inv;
-    }
+  const MAX_QUADS = CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT * 3;
+  const MAX_VERTS = MAX_QUADS * 4;
+  const MAX_IDX   = MAX_QUADS * 6;
 
-    const x0 = px,               y0 = py,               z0 = pz;
-    const x1 = px + du[0],      y1 = py + du[1],      z1 = pz + du[2];
-    const x2 = px + du[0] + dv[0], y2 = py + du[1] + dv[1], z2 = pz + du[2] + dv[2];
-    const x3 = px + dv[0],      y3 = py + dv[1],      z3 = pz + dv[2];
+  const pos = new Float32Array(MAX_VERTS * 3);
+  const nrm = new Float32Array(MAX_VERTS * 3);
+  const col = new Float32Array(MAX_VERTS * 3);
+  const idx = new Uint32Array(MAX_IDX);
 
-    positions.push(x0,y0,z0); normals.push(nx,ny,nz); colors.push(c.r,c.g,c.b);
-    positions.push(x1,y1,z1); normals.push(nx,ny,nz); colors.push(c.r,c.g,c.b);
-    positions.push(x2,y2,z2); normals.push(nx,ny,nz); colors.push(c.r,c.g,c.b);
-    positions.push(x3,y3,z3); normals.push(nx,ny,nz); colors.push(c.r,c.g,c.b);
-
-    if (backface) {
-      indices.push(base, base+2, base+1, base, base+3, base+2);
-    } else {
-      indices.push(base, base+1, base+2, base, base+2, base+3);
-    }
-  }
+  let vp = 0, ip = 0;
 
   const x = [0,0,0], q = [0,0,0];
   const du = [0,0,0], dv = [0,0,0];
-  const maxMask = CHUNK_SIZE * WORLD_HEIGHT; // 1024
-  const mask = new Int16Array(maxMask);
+  const dims = [CHUNK_SIZE, WORLD_HEIGHT, CHUNK_SIZE];
 
   for (let d = 0; d < 3; d++) {
     const u = (d+1)%3, v = (d+2)%3;
@@ -254,6 +240,7 @@ export function buildChunkMesh(world, chunk) {
     du[0]=du[1]=du[2]=dv[0]=dv[1]=dv[2]=0;
     du[u]=1; dv[v]=1;
     const dimU = dims[u], dimV = dims[v];
+    const mask = new Int16Array(dimU * dimV);
 
     for (x[d] = -1; x[d] < dims[d];) {
       let n = 0;
@@ -279,7 +266,44 @@ export function buildChunkMesh(world, chunk) {
 
           x[u] = i; x[v] = j;
           du[u] = w; dv[v] = h;
-          emitQuad(x[0]+wx0, x[1], x[2]+wz0, du, dv, Math.abs(cell), cell < 0);
+
+          const px = x[0]+wx0, py = x[1], pz = x[2]+wz0;
+          const type = Math.abs(cell);
+          const backface = cell < 0;
+          const ni = (d*2 + (backface?1:0))*3;
+          const nx = NRM[ni], ny = NRM[ni+1], nz = NRM[ni+2];
+          const cr = CR[type], cg = CG[type], cb = CB[type];
+
+          const x0=px,               y0=py,               z0=pz;
+          const x1=px+du[0],         y1=py+du[1],         z1=pz+du[2];
+          const x2=px+du[0]+dv[0],   y2=py+du[1]+dv[1],   z2=pz+du[2]+dv[2];
+          const x3=px+dv[0],         y3=py+dv[1],         z3=pz+dv[2];
+
+          const base = vp / 3;
+
+          pos[vp]=x0; nrm[vp]=nx; col[vp]=cr; vp++;
+          pos[vp]=y0; nrm[vp]=ny; col[vp]=cg; vp++;
+          pos[vp]=z0; nrm[vp]=nz; col[vp]=cb; vp++;
+
+          pos[vp]=x1; nrm[vp]=nx; col[vp]=cr; vp++;
+          pos[vp]=y1; nrm[vp]=ny; col[vp]=cg; vp++;
+          pos[vp]=z1; nrm[vp]=nz; col[vp]=cb; vp++;
+
+          pos[vp]=x2; nrm[vp]=nx; col[vp]=cr; vp++;
+          pos[vp]=y2; nrm[vp]=ny; col[vp]=cg; vp++;
+          pos[vp]=z2; nrm[vp]=nz; col[vp]=cb; vp++;
+
+          pos[vp]=x3; nrm[vp]=nx; col[vp]=cr; vp++;
+          pos[vp]=y3; nrm[vp]=ny; col[vp]=cg; vp++;
+          pos[vp]=z3; nrm[vp]=nz; col[vp]=cb; vp++;
+
+          if (backface) {
+            idx[ip++] = base;   idx[ip++] = base+2; idx[ip++] = base+1;
+            idx[ip++] = base;   idx[ip++] = base+3; idx[ip++] = base+2;
+          } else {
+            idx[ip++] = base;   idx[ip++] = base+1; idx[ip++] = base+2;
+            idx[ip++] = base;   idx[ip++] = base+2; idx[ip++] = base+3;
+          }
 
           for (let l = 0; l < h; l++)
             for (let k = 0; k < w; k++) mask[n + k + l*dimU] = 0;
@@ -290,88 +314,12 @@ export function buildChunkMesh(world, chunk) {
   }
 
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute('normal',   new THREE.Float32BufferAttribute(normals, 3));
-  geo.setAttribute('color',    new THREE.Float32BufferAttribute(colors, 3));
-  geo.setIndex(indices);
-  return new THREE.Mesh(geo, CHUNK_MATERIAL);
-}
-
-// ---------- LOD (cached biome lookups) ----------
-export function buildLODMesh(world, gx, gz, level) {
-  const step = 1 << level;
-  const n = CHUNK_SIZE;
-  const overlap = 4;
-  const totalSteps = n + overlap * 2;
-  const ox = gx * n * step - overlap * step;
-  const oz = gz * n * step - overlap * step;
-  const W = totalSteps + 2;
-
-  const H = new Int16Array(W * W);
-  const BIOMES = new Uint8Array(W * W); // 0 forest, 1 desert, 2 mountain
-
-  for (let j = -overlap; j < n + overlap; j++) {
-    for (let i = -overlap; i < n + overlap; i++) {
-      const wx = ox + (i + overlap) * step;
-      const wz = oz + (j + overlap) * step;
-      const idx = (i + overlap) + (j + overlap) * W;
-      H[idx] = world.terrainHeight(wx, wz);
-      const b = world.getBiome(wx, wz);
-      BIOMES[idx] = b === 'desert' ? 1 : (b === 'mountain' ? 2 : 0);
-    }
-  }
-
-  const h = (i, j) => H[(i + overlap) + (j + overlap) * W];
-  const biomeAt = (i, j) => BIOMES[(i + overlap) + (j + overlap) * W];
-
-  const positions = [], normals = [], colors = [], indices = [];
-  const Y_OFF = -0.05;
-
-  function quad(verts, normal, c) {
-    const base = positions.length / 3;
-    for (let vi = 0; vi < 4; vi++) {
-      positions.push(verts[vi][0], verts[vi][1] + Y_OFF, verts[vi][2]);
-      normals.push(normal[0], normal[1], normal[2]);
-      colors.push(c.r, c.g, c.b);
-    }
-    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-  }
-
-  const dirt = BLOCK_COLORS[DIRT];
-  const stone = BLOCK_COLORS[STONE];
-
-  for (let j = 0; j < n; j++) {
-    for (let i = 0; i < n; i++) {
-      const y = h(i, j);
-      const x0 = ox + (i + overlap) * step;
-      const z0 = oz + (j + overlap) * step;
-      const x1 = x0 + step;
-      const z1 = z0 + step;
-      const bIdx = biomeAt(i, j);
-      let surfaceType = GRASS;
-      if (bIdx === 1) surfaceType = SAND;
-      else if (bIdx === 2) surfaceType = STONE;
-      const topColor = BLOCK_COLORS[surfaceType];
-
-      quad([[x0, y, z1], [x1, y, z1], [x1, y, z0], [x0, y, z0]], [0, 1, 0], topColor);
-
-      const walls = [
-        [h(i+1, j), [1,0,0], (a,b) => [[x1,a,z0],[x1,b,z0],[x1,b,z1],[x1,a,z1]]],
-        [h(i-1, j), [-1,0,0], (a,b) => [[x0,a,z1],[x0,b,z1],[x0,b,z0],[x0,a,z0]]],
-        [h(i,j+1), [0,0,1], (a,b) => [[x0,a,z1],[x1,a,z1],[x1,b,z1],[x0,b,z1]]],
-        [h(i,j-1), [0,0,-1], (a,b) => [[x1,a,z0],[x0,a,z0],[x0,b,z0],[x1,b,z0]]],
-      ];
-      for (let wi = 0; wi < walls.length; wi++) {
-        const hn = walls[wi][0], dir = walls[wi][1], make = walls[wi][2];
-        if (hn < y) quad(make(hn, y), dir, (y - hn) <= 4 ? dirt : stone);
-      }
-    }
-  }
-
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute('normal',   new THREE.Float32BufferAttribute(normals, 3));
-  geo.setAttribute('color',    new THREE.Float32BufferAttribute(colors, 3));
-  geo.setIndex(indices);
-  return new THREE.Mesh(geo, CHUNK_MATERIAL);
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos.subarray(0, vp), 3));
+  geo.setAttribute('normal',   new THREE.Float32BufferAttribute(nrm.subarray(0, vp), 3));
+  geo.setAttribute('color',    new THREE.Float32BufferAttribute(col.subarray(0, vp), 3));
+  geo.setIndex(new THREE.Uint32BufferAttribute(idx.subarray(0, ip), 1));
+  const mesh = new THREE.Mesh(geo, CHUNK_MATERIAL);
+  mesh.matrixAutoUpdate = false;
+  mesh.updateMatrix();
+  return mesh;
 }

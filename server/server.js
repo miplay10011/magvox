@@ -1,4 +1,3 @@
-// ===================== server.js =====================
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -24,14 +23,12 @@ const httpServer = http.createServer((req, res) => {
 
 const AIR=0, GRASS=1, DIRT=2, STONE=3, WOOD=4, LEAVES=5, PLANKS=6, SAND=7, GRAVEL=8, COAL_ORE=9, IRON_ORE=10;
 
-// ===== Генерация ника =====
 const ADJECTIVES = ["Весёлый","Храбрый","Тихий","Быстрый","Умный","Смелый","Добрый","Злой","Магический","Ледяной","Огненный","Тёмный","Светлый","Летающий","Подземный","Древний","Могучий"];
 const NOUNS = ["Волшебник","Маг","Чародей","Колдун","Шаман","Друид","Некромант","Иллюзионист","Алхимик","Варлок","Магистр","Архимаг","Мистик","Заклинатель"];
 function randomNickname() {
   return `${ADJECTIVES[Math.floor(Math.random()*ADJECTIVES.length)]}${NOUNS[Math.floor(Math.random()*NOUNS.length)]}${Math.floor(Math.random()*1000)}`;
 }
 
-// ===== Шум Перлина (оптимизирован: 3 floor вместо 6) =====
 const PERM = [151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,190,6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,88,237,149,56,87,174,20,125,136,171,168,68,175,74,165,71,134,139,48,27,166,77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,102,143,54,65,25,63,161,1,216,80,73,209,76,132,187,208,89,18,169,200,196,135,130,116,188,159,86,164,100,109,198,173,186,3,64,52,217,226,250,124,123,5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,223,183,170,213,119,248,152,2,44,154,163,70,221,153,101,155,167,43,172,9,129,22,39,253,19,98,108,110,79,113,224,232,178,185,112,104,218,246,97,228,251,34,242,193,238,210,144,12,191,179,162,241,81,51,145,235,249,14,239,107,49,192,214,31,181,199,106,157,184,84,204,176,115,121,50,45,127,4,150,254,138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180];
 const p = new Array(512);
 for (let i = 0; i < 256; i++) p[i] = p[i+256] = PERM[i];
@@ -84,7 +81,6 @@ function getBiome(wx, wz){
   return 'forest';
 }
 
-// ===== Кэши высот и биомов (убирают 90% вызовов шума) =====
 const heightCache = new Map();
 const biomeCache = new Map();
 function getCachedHeight(wx, wz){
@@ -152,7 +148,6 @@ const edits = new Map();
 const players = new Map();
 let nextId = 1;
 
-// Предгенерация деревьев (теперь быстрее благодаря кэшу высот)
 for (let cx=-20; cx<=20; cx++){
   for (let cz=-20; cz<=20; cz++){
     if (Math.random()<0.1){
@@ -178,14 +173,11 @@ function applyDamage(targetId, dmg, src={}){
   if (!target) return;
   const attackerId = src.attackerId;
   const attacker = attackerId ? players.get(attackerId) : null;
-
-  // fire resist
   if (src.weapon?.includes('огн') && target.effects.has('fire_resist')){
     dmg *= (1 - target.effects.get('fire_resist').power);
   }
   if (target.effects.has('vulnerability')) dmg *= 1.5;
   if (target.effects.has('weakness')) dmg *= 0.5;
-
   const ward = target.effects.get('ward');
   if (ward && dmg>0){
     const abs = Math.min(ward.power, dmg);
@@ -193,21 +185,16 @@ function applyDamage(targetId, dmg, src={}){
     if (ward.power<=0) target.effects.delete('ward');
     syncEffects(target);
   }
-
   const stoneskin = target.effects.get('stoneskin');
   const bonus = stoneskin ? stoneskin.power : 0;
   dmg *= 1 - 0.04 * (target.armor + bonus);
   if (dmg<=0 && !(src.kb>0)) return;
-
-  // ice skin
   if (target.effects.has('ice_skin') && attackerId && attackerId!==targetId && attacker){
     if (!attacker.effects.has('freeze')){
       attacker.effects.set('freeze',{until:Date.now()+(target.effects.get('ice_skin').power||2)*1000,power:1});
       syncEffects(attacker);
     }
   }
-
-  // chain link
   if (target.chainLink && players.has(target.chainLink)){
     const linked = players.get(target.chainLink);
     if (linked && linked!==target && linked.hp>0 && dmg>0){
@@ -215,17 +202,12 @@ function applyDamage(targetId, dmg, src={}){
       if (ldmg>0) applyDamage(target.chainLink, ldmg, {...src, weapon:'цепочки послушания', kb:0});
     }
   }
-
-  // sphere reflect
   if (target.sphereReflect && target.sphereReflect>0 && attackerId && attackerId!==targetId && attacker && attacker.hp>0){
     const refl = dmg * target.sphereReflect;
     if (refl>0) applyDamage(attackerId, refl, {weapon:'отражённый урон', attackerId:targetId});
   }
-
   const wasAlive = target.hp > 0;
   target.hp -= Math.max(0, dmg);
-
-  // phoenix
   if (target.hp<=4 && !target.phoenixUsed && target.effects.has('phoenix')){
     target.phoenixUsed = true; target.hp = 8;
     broadcast('systemMessage',{message:`${target.nickname} возродился как Феникс!`});
@@ -240,7 +222,6 @@ function applyDamage(targetId, dmg, src={}){
     }
     return;
   }
-
   if (target.hp<=0 && wasAlive){
     target.hp = 50; target.effects.clear(); syncEffects(target);
     broadcast('respawn',{id:targetId});
@@ -258,7 +239,6 @@ function applyDamage(targetId, dmg, src={}){
   }
 }
 
-// ===== Зоны, тотемы, вспомогательные =====
 const activeZones = new Map();
 function addZone(x,z,radius,effect,ownerId,duration){
   const id = Math.random();
@@ -472,7 +452,6 @@ const magicCtx = {
 
 const magic = createMagicEngine(magicCtx);
 
-// ========== Тик (оптимизирован: один now на весь кадр) ==========
 const TICK = 50;
 let lastManaSync = 0;
 setInterval(()=>{
@@ -482,7 +461,6 @@ setInterval(()=>{
     for (const [e,v] of q.effects){
       if (now > v.until){ q.effects.delete(e); changed = true; }
     }
-
     const regen = q.effects.get('regen');
     if (regen && now >= (regen.lastTick||0)+1000){
       regen.lastTick = now;
@@ -491,7 +469,6 @@ setInterval(()=>{
         broadcast('hp',{id,hp:q.hp});
       }
     }
-
     const aura = q.effects.get('fire_aura');
     if (aura){
       if (!q.lastAuraTick) q.lastAuraTick = 0;
@@ -507,17 +484,14 @@ setInterval(()=>{
         }
       }
     }
-
     const burn = q.effects.get('burning');
     if (burn){
       q.burnAcc = (q.burnAcc||0)+dt;
       if (q.burnAcc >= 1){ q.burnAcc -= 1; applyDamage(id,burn.power,{kb:0}); }
     }
-
     if (changed) syncEffects(q);
     q.mana = Math.min(20, q.mana + dt);
   }
-
   for (const [zoneId,zone] of activeZones){
     if (now > zone.until){ activeZones.delete(zoneId); broadcast('zoneEnd',{id:zoneId}); continue; }
     if (zone.effect==='levitate_circle'){
@@ -528,7 +502,6 @@ setInterval(()=>{
       }
     }
   }
-
   for (const [zoneId,zone] of timeSlowZones){
     if (now > zone.endTime){ timeSlowZones.delete(zoneId); continue; }
     for (const [pid,p] of players){
@@ -538,7 +511,6 @@ setInterval(()=>{
       }
     }
   }
-
   if (now - lastManaSync > 1000){
     lastManaSync = now;
     for (const q of players.values()) send(q.ws,'mana',{mana:Math.floor(q.mana)});
@@ -546,7 +518,6 @@ setInterval(()=>{
   magic.tick(dt);
 }, TICK);
 
-// ========== WebSocket ==========
 wss.on('connection',(ws)=>{
   const id = nextId++;
   const nickname = randomNickname();

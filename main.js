@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { World, buildChunkMesh, buildLODMesh, AIR, BLOCK_COLORS, CHUNK_SIZE,
+import { World, buildChunkMesh, AIR, BLOCK_COLORS, CHUNK_SIZE,
          GRASS, DIRT, STONE, WOOD, LEAVES, PLANKS, SAND, GRAVEL, COAL_ORE, IRON_ORE } from './world.js';
 import { Network } from './network.js';
 import { createMagicEngine } from './magic.js';
@@ -7,7 +7,6 @@ import { initParticles, spawnParticles, updateParticles } from './particles.js';
 
 // ========== Книга комбинаций (данные) ==========
 const SPELL_COMBINATIONS = [
-  // === СТАРЫЕ (с ПКМ-вариантами) ===
   { name: "🚀 Прыгучесть / 💨 Воздушный толчок", elements: "💨 + 💨 + 🪨", effect: "🔸 ПКМ: +50% высоты прыжка (75с) / 🔹 ЛКМ: отбрасывает врагов" },
   { name: "💚 Регенерация / 💧 Водный снаряд", elements: "💧 + ☀ + ☀", effect: "🔸 ПКМ: восстановление 1 HP/с (50с) / 🔹 ЛКМ: водяной шар (урон 6)" },
   { name: "🔥 Огнеупорность / 🔥 Огненный шар", elements: "🔥 + 🪨 + 🛡", effect: "🔸 ПКМ: сопротивление огню 50% (100с) / 🔹 ЛКМ: огненный шар (урон 10, взрыв)" },
@@ -39,7 +38,6 @@ const SPELL_COMBINATIONS = [
   { name: "☄️ Метеор / 🛡 Метеоритный щит", elements: "⚡ + 🔥 + 🪨", effect: "🔹 ЛКМ: падающий взрывной метеор / 🔸 ПКМ: щит 8 ед. (15с)" },
   { name: "🎯 Обычный снаряд / 🛡 Защита", elements: "любая комбинация (кроме 🛡/⚡)", effect: "🔹 ЛКМ: снаряд (урон от элементов) / 🔸 ПКМ: мгновенный щит или лечение" },
 
-  // === НОВЫЕ 2-ЭЛЕМЕНТНЫЕ ===
   { name: "💨 Паровая волна / 💚 Очищающий пар", elements: "🔥 + 💧", effect: "🔹 ЛКМ: отбрасывание + урон 4 / 🔸 ПКМ: снятие 🔥 Горение и ❄ Заморозки + 💚 Регенерация (5с)" },
   { name: "💧 Водяной разрез / 🕊 Воздушный карман", elements: "💧 + 💨", effect: "🔹 ЛКМ: снаряд с 🐌 Замедлением / 🔸 ПКМ: 🕊 Левитация + 💨 Ускорение (5с)" },
   { name: "🪨 Каменный шквал / 🧱 Земляная стена", elements: "🪨 + 💨", effect: "🔹 ЛКМ: снаряд + взрыв / 🔸 ПКМ: маленькая стена (3 блока)" },
@@ -50,26 +48,22 @@ const SPELL_COMBINATIONS = [
   { name: "☀ Световой клинок / ✨ Священный щит", elements: "🛡 + ☀", effect: "🔹 ЛКМ: снаряд (лечит кастера) / 🔸 ПКМ: снятие 🌑 Проклятия + 🛡 6 ед. (12с)" },
   { name: "🌑 Теневой плащ (мина)", elements: "🛡 + 🌑", effect: "🔹 ЛКМ: 💣 Мина / 🔸 ПКМ: 🌫️ Ослепление врагов + 💨 Ускорение себе" },
 
-  // === НОВЫЕ 3-ЭЛЕМЕНТНЫЕ ===
   { name: "☁️ Облако пара / 🛡 Паровой щит", elements: "🔥 + 💧 + 💨", effect: "🔹 ЛКМ: зона урона (3 HP) + лечение кастера (5) / 🔸 ПКМ: 🔥 Огнеупорность + ❄ Ледяная кожа" },
   { name: "🌋 Вулканическая бомба / 🪨 Магма-броня", elements: "🔥 + 🪨 + 🌑", effect: "🔹 ЛКМ: снаряд (радиус 3.5, урон 12, 🔥 Горение) / 🔸 ПКМ: 🪨 Каменная кожа + 🔥 Огненная аура" },
   { name: "❄ Ледяная стрела / 💚 Светлое исцеление", elements: "💧 + ❄ + ☀", effect: "🔹 ЛКМ: снаряд (❄ Заморозка 2с) / 🔸 ПКМ: снятие дебаффов + 💚 Лечение 8" },
   { name: "⚡ Электрический разряд / 🛡 Заземление", elements: "💨 + 🪨 + ⚡", effect: "🔹 ЛКМ: цепная молния (урон 10, перескок) / 🔸 ПКМ: 🛡 Барьер 3 ед." },
   { name: "🌑 Чёрная вода / 🌙 Лунная вода", elements: "🌑 + ☀ + 💧", effect: "🔹 ЛКМ: снаряд (🌑 Проклятие + 🌫️ Ослепление) / 🔸 ПКМ: снятие 🌑 + 💚 Лечение 12" },
 
-  // === НОВЫЕ 4-ЭЛЕМЕНТНЫЕ ===
   { name: "🌩️ Шторм / 🛡 Защита стихий", elements: "🔥 + 💧 + 💨 + 🪨", effect: "🔹 ЛКМ: массовый урон 8 + 🐌 Замедление + 🔥 Горение / 🔸 ПКМ: 🔥 Огнеупорность + ❄ Ледяная кожа + 🛡 4 ед." },
   { name: "✨ Карающий луч / 🛡 Абсолютная защита", elements: "☀ + 🌑 + ⚡ + 🛡", effect: "🔹 ЛКМ: сильный луч (урон 20) / 🔸 ПКМ: 🛡 12 ед. + 💚 Регенерация" },
   { name: "⚖️ Взрыв контраста / ⚖️ Баланс", elements: "🔥 + ❄ + 💨 + 🪨", effect: "🔹 ЛКМ: взрыв (урон 7, случайный 🔥/❄) / 🔸 ПКМ: снятие 🔥 и ❄ + 🛡 5 ед." },
 
-  // === НОВЫЕ 5-ЭЛЕМЕНТНЫЕ (чистые стихии) ===
   { name: "☄️ Метеоритный дождь / 🔥 Абсолютное пламя", elements: "🔥 + 🔥 + 🔥 + 🔥 + 🔥", effect: "🔹 ЛКМ: 5 метеоров с неба / 🔸 ПКМ: 🔥 Огненная аура (2 урона/с, радиус 4)" },
   { name: "🌊 Цунами / 💧 Аква-щит", elements: "💧 + 💧 + 💧 + 💧 + 💧", effect: "🔹 ЛКМ: отбрасывание + урон 12 / 🔸 ПКМ: 💚 Регенерация (3 HP/с, 20с)" },
   { name: "🌋 Землетрясение / 🧱 Непробиваемая стена", elements: "🪨 + 🪨 + 🪨 + 🪨 + 🪨", effect: "🔹 ЛКМ: 🌋 Громокаменный топот (радиус 6) / 🔸 ПКМ: большая стена (7 блоков)" },
   { name: "🌪️ Ураган / 🕊 Полёт", elements: "💨 + 💨 + 💨 + 💨 + 💨", effect: "🔹 ЛКМ: отбрасывание всех в радиусе 8 / 🔸 ПКМ: 🕊 Левитация + 💨 Ускорение ×2 (15с)" },
   { name: "❄ Глобальное замораживание / 🧊 Ледяная тюрьма", elements: "❄ + ❄ + ❄ + ❄ + ❄", effect: "🔹 ЛКМ: ❄ Заморозка всех в радиусе 8 (5с) / 🔸 ПКМ: стена вокруг цели" },
 
-  // === ЕЩЁ УНИКАЛЬНЫЕ 5-ЭЛЕМЕНТНЫЕ ===
   { name: "🌿 Природный взрыв / 🐦‍🔥 Феникс", elements: "🔥 + 💧 + 🪨 + 💨 + ☀", effect: "🔹 ЛКМ: взрыв (радиус 5, урон 18) + 🌫️ Ослепление / 🔸 ПКМ: 🐦‍🔥 Феникс + 💚 Лечение 15" },
   { name: "🌑 Тёмная зима / ❄ Ледяной дождь", elements: "🌑 + ❄ + 💧 + 🪨 + ⚡", effect: "🔹 ЛКМ: 🌪️ Чёрный вихрь + ❄ Заморозка / 🔸 ПКМ: ⏳ Замедление времени (радиус 6, 12с) + 💚 Лечение 8" },
   { name: "☀ Небесный луч / ✨ Небесный щит", elements: "☀ + 🔥 + 💨 + ⚡ + 🛡", effect: "🔹 ЛКМ: мощный луч / 🔸 ПКМ: 🛡 10 ед. + 💚 Регенерация + 🔥 Огнеупорность" },
@@ -272,27 +266,17 @@ const player = {
 };
 let yaw = 0, pitch = 0;
 
-
-
-// ========== Мир + менеджер чанков (оптимизированный) ==========
+// ========== Мир + менеджер чанков (максимальная дистанция, binary dirty cache) ==========
 let world = null;
-const FULL_RADIUS = 6;
-const LOD_RINGS = [
-  { level: 2, radius: 16 },
-  { level: 3, radius: 30 },
-];
-const FULL_BUDGET = 2;
-const LOD_BUDGET  = 2;
-const lodMeshes = new Map();
-
+const FULL_RADIUS = 12;
 const dirtyChunks = new Set();
-let lastChunkCX = Infinity, lastChunkCZ = Infinity;
 
 function remeshChunk(chunk) {
-  if (!chunk) return;
+  if (!chunk || !chunk.dirty) return;
   if (chunk.mesh) { scene.remove(chunk.mesh); chunk.mesh.geometry.dispose(); }
   chunk.mesh = buildChunkMesh(world, chunk);
   scene.add(chunk.mesh);
+  chunk.dirty = false;
 }
 
 function startWorld(seed, edits = []) {
@@ -308,27 +292,20 @@ function chunkManagerTick() {
   const pcx = Math.floor(player.pos.x / CHUNK_SIZE);
   const pcz = Math.floor(player.pos.z / CHUNK_SIZE);
 
-  // --- 1. Отложенный ремеш соседей (не более 3 за тик) ---
-  let dirtyBudget = 3;
+  // 1. Отложенный ремеш соседей (не более 2 за тик)
+  let dirtyBudget = 2;
   for (const chunk of dirtyChunks) {
     if (dirtyBudget-- <= 0) break;
     dirtyChunks.delete(chunk);
     remeshChunk(chunk);
   }
 
-  // --- 2. Full чанки ---
+  // 2. Удаление далёких чанков
   const wantFull = new Set();
-  const missing = [];
   for (let dx = -FULL_RADIUS; dx <= FULL_RADIUS; dx++)
-    for (let dz = -FULL_RADIUS; dz <= FULL_RADIUS; dz++) {
-      const cx = pcx + dx, cz = pcz + dz;
-      const key = world.key(cx, cz);
-      wantFull.add(key);
-      if (!world.getChunk(cx, cz))
-        missing.push([cx, cz, dx * dx + dz * dz]);
-    }
+    for (let dz = -FULL_RADIUS; dz <= FULL_RADIUS; dz++)
+      wantFull.add(world.key(pcx + dx, pcz + dz));
 
-  // Удаляем далёкие чанки
   const toDelete = [];
   for (const [key, c] of world.chunks)
     if (!wantFull.has(key)) toDelete.push([key, c]);
@@ -338,68 +315,30 @@ function chunkManagerTick() {
     world.chunks.delete(key);
   }
 
-  // Генерируем ближайшие чанки первыми, но не более FULL_BUDGET за раз
+  // 3. Генерация недостающих (1 чанк за тик, ближайшие в приоритете)
+  const missing = [];
+  for (let dx = -FULL_RADIUS; dx <= FULL_RADIUS; dx++)
+    for (let dz = -FULL_RADIUS; dz <= FULL_RADIUS; dz++) {
+      const cx = pcx + dx, cz = pcz + dz;
+      if (!world.getChunk(cx, cz))
+        missing.push([cx, cz, dx * dx + dz * dz]);
+    }
   missing.sort((a, b) => a[2] - b[2]);
-  let genBudget = FULL_BUDGET;
+
+  let genBudget = 1;
   for (const [cx, cz] of missing) {
     if (genBudget-- <= 0) break;
     const chunk = world.generateChunk(cx, cz);
+    chunk.dirty = true;
     remeshChunk(chunk);
-    // Помечаем соседей грязными вместо немедленного ремеша
-    for (const [nx, nz] of [[cx + 1, cz], [cx - 1, cz], [cx, cz + 1], [cx, cz - 1]]) {
+    for (const [nx, nz] of [[cx+1,cz],[cx-1,cz],[cx,cz+1],[cx,cz-1]]) {
       const nb = world.getChunk(nx, nz);
-      if (nb) dirtyChunks.add(nb);
+      if (nb) { nb.dirty = true; dirtyChunks.add(nb); }
     }
   }
-
-  // --- 3. LOD — пересчитываем только если игрок сменил чанк ---
-  if (pcx !== lastChunkCX || pcz !== lastChunkCZ) {
-    const wantLod = new Set();
-    const lodMissing = [];
-    let inner = FULL_RADIUS;
-    for (const { level, radius } of LOD_RINGS) {
-      const s = 1 << level;
-      const minGx = Math.floor((pcx - radius) / s);
-      const maxGx = Math.floor((pcx + radius) / s);
-      const minGz = Math.floor((pcz - radius) / s);
-      const maxGz = Math.floor((pcz + radius) / s);
-      for (let gx = minGx; gx <= maxGx; gx++)
-        for (let gz = minGz; gz <= maxGz; gz++) {
-          const d = Math.max(
-            Math.abs(gx * s + s / 2 - pcx),
-            Math.abs(gz * s + s / 2 - pcz)
-          );
-          if (d > radius || d <= inner) continue;
-          const key = `${level}:${gx},${gz}`;
-          wantLod.add(key);
-          if (!lodMeshes.has(key)) lodMissing.push([key, gx, gz, level, d]);
-        }
-      inner = radius;
-    }
-
-    // Удаляем старые LOD
-    for (const [key, mesh] of lodMeshes) {
-      if (wantLod.has(key)) continue;
-      scene.remove(mesh); mesh.geometry.dispose(); lodMeshes.delete(key);
-    }
-
-    // Создаём новые LOD
-    lodMissing.sort((a, b) => a[4] - b[4]);
-    let lodGen = LOD_BUDGET;
-    for (const [key, gx, gz, level] of lodMissing) {
-      if (lodGen-- <= 0) break;
-      const mesh = buildLODMesh(world, gx, gz, level);
-      lodMeshes.set(key, mesh);
-      scene.add(mesh);
-    }
-  }
-
-  lastChunkCX = pcx;
-  lastChunkCZ = pcz;
 }
 
-setInterval(chunkManagerTick, 100);
-
+setInterval(chunkManagerTick, 50);
 
 // ========== Статы и эффекты ==========
 const stats = { hp: 50, armor: 0, mana: 20, maxMana: 20 };
@@ -413,7 +352,6 @@ const effectsEl = document.getElementById('effects-hud');
 
 function renderStats() {
   let s = '';
-  // 10 сердец – это 20 HP, а у нас 50 HP → 25 сердец
   for (let i = 0; i < 25; i++)
     s += `<span style="color:${stats.hp >= (i + 1) * 2 - 1 ? '#e33' : '#444'}">\u2665</span>`;
   s += '  ';
@@ -550,7 +488,7 @@ function updateTransients(dt) {
 const SERVER_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
 let myId = null;
 let myNickname = '';
-const remotePlayers = new Map(); // id -> { group, target, yaw, nickname, lastPos, phase }
+const remotePlayers = new Map();
 
 function createPlayerModel(color) {
   const group = new THREE.Group();
@@ -688,7 +626,12 @@ const net = new Network(SERVER_URL);
 
 // --- Общие игровые события ---
 const EVENTS = {
-  blockUpdate: (m) => { if (world) world.setBlock(m.x, m.y, m.z, m.t).forEach(remeshChunk); },
+  blockUpdate: (m) => {
+    if (!world) return;
+    const dirty = world.setBlock(m.x, m.y, m.z, m.t);
+    dirty.forEach(c => c.dirty = true);
+    dirty.forEach(remeshChunk);
+  },
   projSpawn: (m) => {
     const mat = new THREE.MeshBasicMaterial({
       color: m.kind === 'meteor' ? 0xff6622 : (PROJ_COLORS[m.kind] || 0xffffff),
@@ -812,7 +755,6 @@ const EVENTS = {
     }
   },
   totemPower: (m) => {
-    // визуально – вспышка на цели
     const target = remotePlayers.get(m.targetId);
     if (target) {
       spawnParticles(target.group.position.x, target.group.position.y + 1, target.group.position.z, 0xffdd88, 15, 1, 0.3);
@@ -834,7 +776,6 @@ const EVENTS = {
     const asteroid = new THREE.Mesh(geo, mat);
     asteroid.position.set(m.x, m.startY, m.z);
     scene.add(asteroid);
-    // анимация падения
     let t = 0;
     const fall = setInterval(() => {
       t += 0.05;
@@ -906,7 +847,6 @@ const EVENTS = {
 };
 for (const [t, f] of Object.entries(EVENTS)) net.on(t, f);
 
-// Ослепление (оверлей)
 let blindnessOverlay = null;
 function setBlindness(active) {
   if (!blindnessOverlay) {
@@ -917,7 +857,6 @@ function setBlindness(active) {
   blindnessOverlay.style.display = active ? 'block' : 'none';
 }
 
-// Барьер (визуал)
 let shieldMesh = null;
 
 net.on('init', (m) => {
@@ -955,12 +894,10 @@ net.on('effects', (m) => {
   activeEffects.clear();
   for (const it of m.list) activeEffects.set(it.e, { until: it.until, power: it.power });
   setBlindness(activeEffects.has('blind'));
-  // Визуал дезориентации (переворот экрана)
   if (activeEffects.has('disorient')) {
     document.body.style.transform = 'rotate(180deg)';
     setTimeout(() => document.body.style.transform = '', 6000);
   }
-  // Визуал страха (эффект размытия)
   if (activeEffects.has('fear')) {
     document.body.style.filter = 'blur(4px)';
     setTimeout(() => document.body.style.filter = '', 5000);
@@ -976,9 +913,7 @@ net.on('effects', (m) => {
   } else {
     if (shieldMesh) { camera.remove(shieldMesh); shieldMesh = null; }
   }
-  // Теневые оковы: фиксация обзора на сервере – добавим клиентский эффект
   if (activeEffects.has('shadow_shackles')) {
-    // заблокируем поворот камеры
     document.body.style.pointerEvents = 'none';
     setTimeout(() => document.body.style.pointerEvents = '', 6000);
   }
@@ -1142,7 +1077,11 @@ let localMagic = null;
 function makeLocalCtx() {
   return {
     getBlock: (x, y, z) => world.getBlock(x, y, z),
-    setBlock: (x, y, z, t) => world.setBlock(x, y, z, t).forEach(remeshChunk),
+    setBlock: (x, y, z, t) => {
+      const dirty = world.setBlock(x, y, z, t);
+      dirty.forEach(c => c.dirty = true);
+      dirty.forEach(remeshChunk);
+    },
     terrainHeight: (x, z) => world.terrainHeight(x, z),
     getPlayers: () => [['me', { x: player.pos.x, y: player.pos.y, z: player.pos.z }]],
     applyDamage: (id, dmg, src) => {
@@ -1218,10 +1157,8 @@ document.addEventListener('mousemove', (e) => {
 
 const keys = new Set();
 document.addEventListener('keydown', (e) => {
-  // ========== КНИГА: H ==========
   if (e.code === 'KeyH' && !chatFocused) {
     e.preventDefault();
-
     if (spellBookOpen) closeSpellBook();
     else openSpellBook();
     return;
@@ -1278,7 +1215,6 @@ document.addEventListener('keydown', (e) => {
 });
 document.addEventListener('keyup', (e) => keys.delete(e.code));
 document.addEventListener('wheel', (e) => {
-  // Листание книги, если открыта
   if (spellBookOpen) {
     if (e.deltaY > 0) {
       if ((currentPage+1)*SPELLS_PER_PAGE < SPELL_COMBINATIONS.length) currentPage++;
@@ -1382,7 +1318,6 @@ function updatePlayer(dt) {
   if (effectActive('slow'))   speedMul *= 0.5;
   if (effectActive('freeze')) speedMul = 0;
 
-  // Прыгучесть
   let jumpPower = JUMP_SPEED;
   if (effectActive('jump_boost')) jumpPower *= 1.5;
 
@@ -1418,7 +1353,6 @@ function updatePlayer(dt) {
     moveAxis(dt, 'z');
   }
 
-  // Невесомость (двойной прыжок, медленное падение)
   if (effectActive('weightless')) {
     if (!player.flying && !player.onGround && player.vel.y < 0) player.vel.y *= 0.98;
     if (keys.has('Space') && !player.onGround && !player.doubleJumpUsed) {
@@ -1626,18 +1560,15 @@ document.addEventListener('contextmenu', (e) => e.preventDefault());
 document.addEventListener('mousedown', (e) => {
   if (!world || document.pointerLockElement !== renderer.domElement) return;
 
-  
   if (combatMode) {
-  if (e.button === 0) {  // ЛКМ
-    if (spellQueue.length) castSpell('left');
-    else { const t = raycastPlayers(4.5);
-        if (t) net.send('attack', { target: t.id }); }
-  } else if (e.button === 2) {  // ПКМ
-    if (spellQueue.length) castSpell('right');
-    
+    if (e.button === 0) {
+      if (spellQueue.length) castSpell('left');
+      else { const t = raycastPlayers(4.5); if (t) net.send('attack', { target: t.id }); }
+    } else if (e.button === 2) {
+      if (spellQueue.length) castSpell('right');
+    }
+    return;
   }
-  return;
-}
 
   const hit = raycastBlock(5);
   if (e.button === 0) {
@@ -1649,14 +1580,18 @@ document.addEventListener('mousedown', (e) => {
     if (!hit) return;
     const [x, y, z] = hit.block;
     addItem(world.getBlock(x, y, z));
-    world.setBlock(x, y, z, AIR).forEach(remeshChunk);
+    const dirty1 = world.setBlock(x, y, z, AIR);
+    dirty1.forEach(c => c.dirty = true);
+    dirty1.forEach(remeshChunk);
     net.send('setBlock', { x, y, z, t: AIR });
   } else if (e.button === 2 && hit?.prev) {
     const slot = inventory[selectedSlot];
     if (!slot) return;
     const [x, y, z] = hit.prev;
     if (intersectsPlayer(x, y, z)) return;
-    world.setBlock(x, y, z, slot.type).forEach(remeshChunk);
+    const dirty2 = world.setBlock(x, y, z, slot.type);
+    dirty2.forEach(c => c.dirty = true);
+    dirty2.forEach(remeshChunk);
     net.send('setBlock', { x, y, z, t: slot.type });
     if (--slot.count <= 0) inventory[selectedSlot] = null;
     refreshUI();
@@ -1674,7 +1609,6 @@ function animate(now) {
     const ready = world.getChunk(
       Math.floor(player.pos.x / CHUNK_SIZE),
       Math.floor(player.pos.z / CHUNK_SIZE));
-    // Блокируем движение, если открыта книга
     if (ready && !chatFocused && !settingsOpen && !spellBookOpen) updatePlayer(dt);
     updateRemotePlayers(dt);
 
