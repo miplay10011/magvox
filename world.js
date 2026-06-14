@@ -326,53 +326,137 @@ export function buildChunkMesh(world, chunk) {
 
 // ---------- LOD superchunk: 4x4 chunks (64x64 blocks) merged ----------
 export function buildLODChunkMesh(world, scx, scz) {
-  const SUPER = 4;         // 1 superchunk = 4x4 ordinary chunks
-  const SCALE = 4;         // 1 LOD column = 4x4 blocks
+  const SUPER = 4;         // 1 superchunk = 4 ordinary chunks
+  const SCALE = 4;         // 1 LOD column = 4 ordinary blocks
   const COLS = (CHUNK_SIZE * SUPER) / SCALE; // 16 columns per side
-  const SIZE = CHUNK_SIZE * SUPER;         // 64 blocks total size
-  
+  const SIZE = CHUNK_SIZE * SUPER;           // 64 blocks total
+
   const positions = [], normals = [], colors = [], indices = [];
   const wx0 = scx * SIZE;
   const wz0 = scz * SIZE;
 
-  // Precompute heights for the whole 64x64 area
+  // Precompute heights and surface types
   const heights = new Float32Array(COLS * COLS);
+  const colData = new Uint8Array(COLS * COLS); // 0 forest, 1 desert, 2 mountain
+
   for (let lz = 0; lz < COLS; lz++) {
     for (let lx = 0; lx < COLS; lx++) {
       const wx = wx0 + lx * SCALE + SCALE * 0.5;
       const wz = wz0 + lz * SCALE + SCALE * 0.5;
       const hRaw = world.terrainHeight(wx, wz);
       heights[lx + lz * COLS] = Math.max(1, Math.min(WORLD_HEIGHT - 1, Math.floor(hRaw)));
+      const biome = world.getBiome(wx, wz);
+      colData[lx + lz * COLS] = biome === 'desert' ? 1 : (biome === 'mountain' ? 2 : 0);
     }
   }
 
+  const getColor = (t) => {
+    if (t === 1) return BLOCK_COLORS[SAND];
+    if (t === 2) return BLOCK_COLORS[STONE];
+    return BLOCK_COLORS[GRASS];
+  };
+
+  function addFace(x1,y1,z1, x2,y2,z2, x3,y3,z3, x4,y4,z4, nx,ny,nz, col) {
+    const base = positions.length / 3;
+    positions.push(x1,y1,z1, x2,y2,z2, x3,y3,z3, x4,y4,z4);
+    for (let i=0;i<4;i++){ normals.push(nx,ny,nz); colors.push(col.r,col.g,col.b); }
+    indices.push(base, base+1, base+2, base, base+2, base+3);
+  }
+
+  // --- TOP FACES ---
   for (let lz = 0; lz < COLS; lz++) {
     for (let lx = 0; lx < COLS; lx++) {
       const idx = lx + lz * COLS;
       const h = heights[idx];
-
-      const wx = wx0 + lx * SCALE + SCALE * 0.5;
-      const wz = wz0 + lz * SCALE + SCALE * 0.5;
-      const biome = world.getBiome(wx, wz);
-      let topType = GRASS;
-      if (biome === 'desert') topType = SAND;
-      else if (biome === 'mountain') topType = STONE;
-      const c = BLOCK_COLORS[topType];
-
+      const c = getColor(colData[idx]);
       const x0 = wx0 + lx * SCALE;
       const x1 = x0 + SCALE;
       const z0 = wz0 + lz * SCALE;
       const z1 = z0 + SCALE;
-
-      const base = positions.length / 3;
-      // Top face only — enough for distant terrain
-      positions.push(x0, h, z1, x1, h, z1, x1, h, z0, x0, h, z0);
-      for (let i = 0; i < 4; i++) {
-        normals.push(0, 1, 0);
-        colors.push(c.r, c.g, c.b);
-      }
-      indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      addFace(x0,h,z1, x1,h,z1, x1,h,z0, x0,h,z0, 0,1,0, c);
     }
+  }
+
+  // --- INTERNAL SIDE WALLS (between neighbouring columns) ---
+  for (let lz = 0; lz < COLS; lz++) {
+    for (let lx = 0; lx < COLS; lx++) {
+      const idx = lx + lz * COLS;
+      const h = heights[idx];
+      const xEdge = wx0 + (lx + 1) * SCALE;
+      const zEdge = wz0 + (lz + 1) * SCALE;
+      const z0 = wz0 + lz * SCALE;
+      const x0 = wx0 + lx * SCALE;
+
+      // Wall to the right (+X neighbour)
+      if (lx + 1 < COLS) {
+        const hR = heights[(lx+1) + lz * COLS];
+        if (h !== hR) {
+          const hMin = Math.min(h, hR);
+          const hMax = Math.max(h, hR);
+          const c = h > hR ? getColor(colData[idx]) : getColor(colData[(lx+1)+lz*COLS]);
+          if (h > hR) {
+            // normal +1,0,0 — wall belongs to current (higher) column
+            addFace(xEdge, hMin, z0+SCALE, xEdge, hMin, z0, xEdge, hMax, z0, xEdge, hMax, z0+SCALE, 1,0,0, c);
+          } else {
+            // normal -1,0,0 — belongs to right column
+            addFace(xEdge, hMin, z0, xEdge, hMin, z0+SCALE, xEdge, hMax, z0+SCALE, xEdge, hMax, z0, -1,0,0, c);
+          }
+        }
+      }
+
+      // Wall to the front (+Z neighbour)
+      if (lz + 1 < COLS) {
+        const hF = heights[lx + (lz+1) * COLS];
+        if (h !== hF) {
+          const hMin = Math.min(h, hF);
+          const hMax = Math.max(h, hF);
+          const c = h > hF ? getColor(colData[idx]) : getColor(colData[lx+(lz+1)*COLS]);
+          if (h > hF) {
+            // normal 0,0,+1
+            addFace(x0, hMin, zEdge, x0+SCALE, hMin, zEdge, x0+SCALE, hMax, zEdge, x0, hMax, zEdge, 0,0,1, c);
+          } else {
+            // normal 0,0,-1
+            addFace(x0+SCALE, hMin, zEdge, x0, hMin, zEdge, x0, hMax, zEdge, x0+SCALE, hMax, zEdge, 0,0,-1, c);
+          }
+        }
+      }
+    }
+  }
+
+  // --- PERIMETER WALLS (outer edges of the superchunk, down to y=0) ---
+  // Left edge (x = wx0), facing -X
+  for (let lz = 0; lz < COLS; lz++) {
+    const idx = 0 + lz * COLS;
+    const h = heights[idx];
+    const c = getColor(colData[idx]);
+    const z0 = wz0 + lz * SCALE;
+    addFace(wx0, 0, z0, wx0, 0, z0+SCALE, wx0, h, z0+SCALE, wx0, h, z0, -1,0,0, c);
+  }
+  // Right edge (x = wx0+SIZE), facing +X
+  for (let lz = 0; lz < COLS; lz++) {
+    const idx = (COLS-1) + lz * COLS;
+    const h = heights[idx];
+    const c = getColor(colData[idx]);
+    const z0 = wz0 + lz * SCALE;
+    const xr = wx0 + SIZE;
+    addFace(xr, 0, z0+SCALE, xr, 0, z0, xr, h, z0, xr, h, z0+SCALE, 1,0,0, c);
+  }
+  // Back edge (z = wz0), facing -Z
+  for (let lx = 0; lx < COLS; lx++) {
+    const idx = lx + 0 * COLS;
+    const h = heights[idx];
+    const c = getColor(colData[idx]);
+    const x0 = wx0 + lx * SCALE;
+    addFace(x0+SCALE, 0, wz0, x0, 0, wz0, x0, h, wz0, x0+SCALE, h, wz0, 0,0,-1, c);
+  }
+  // Front edge (z = wz0+SIZE), facing +Z
+  for (let lx = 0; lx < COLS; lx++) {
+    const idx = lx + (COLS-1) * COLS;
+    const h = heights[idx];
+    const c = getColor(colData[idx]);
+    const x0 = wx0 + lx * SCALE;
+    const zf = wz0 + SIZE;
+    addFace(x0, 0, zf, x0+SCALE, 0, zf, x0+SCALE, h, zf, x0, h, zf, 0,0,1, c);
   }
 
   if (!positions.length) return null;
