@@ -292,8 +292,8 @@ function chunkManagerTick() {
   const pcx = Math.floor(player.pos.x / CHUNK_SIZE);
   const pcz = Math.floor(player.pos.z / CHUNK_SIZE);
 
-  // 1. Отложенный ремеш соседей (не более 2 за тик)
-  let dirtyBudget = 2;
+  // 1. Отложенный ремеш соседей / взрывных чанков (до 6 за тик)
+  let dirtyBudget = 6;
   for (const chunk of dirtyChunks) {
     if (dirtyBudget-- <= 0) break;
     dirtyChunks.delete(chunk);
@@ -315,7 +315,7 @@ function chunkManagerTick() {
     world.chunks.delete(key);
   }
 
-  // 3. Генерация недостающих (1 чанк за тик, ближайшие в приоритете)
+  // 3. Генерация недостающих (2 чанка за тик = 50 чанков/сек при 40мс интервале)
   const missing = [];
   for (let dx = -FULL_RADIUS; dx <= FULL_RADIUS; dx++)
     for (let dz = -FULL_RADIUS; dz <= FULL_RADIUS; dz++) {
@@ -325,7 +325,7 @@ function chunkManagerTick() {
     }
   missing.sort((a, b) => a[2] - b[2]);
 
-  let genBudget = 1;
+  let genBudget = 2;
   for (const [cx, cz] of missing) {
     if (genBudget-- <= 0) break;
     const chunk = world.generateChunk(cx, cz);
@@ -338,7 +338,7 @@ function chunkManagerTick() {
   }
 }
 
-setInterval(chunkManagerTick, 50);
+setInterval(chunkManagerTick, 40);
 
 // ========== Статы и эффекты ==========
 const stats = { hp: 50, armor: 0, mana: 20, maxMana: 20 };
@@ -629,8 +629,19 @@ const EVENTS = {
   blockUpdate: (m) => {
     if (!world) return;
     const dirty = world.setBlock(m.x, m.y, m.z, m.t);
-    dirty.forEach(c => c.dirty = true);
-    dirty.forEach(remeshChunk);
+    dirty.forEach(c => { c.dirty = true; dirtyChunks.add(c); remeshChunk(c); });
+  },
+  blocksUpdate: (m) => {
+    if (!world) return;
+    const dirtySet = new Set();
+    for (const b of m.blocks) {
+      world.setBlock(b.x, b.y, b.z, b.t).forEach(c => dirtySet.add(c));
+    }
+    let i = 0;
+    dirtySet.forEach(c => {
+      if (i++ < 4) { c.dirty = true; remeshChunk(c); }
+      else { c.dirty = true; dirtyChunks.add(c); }
+    });
   },
   projSpawn: (m) => {
     const mat = new THREE.MeshBasicMaterial({
@@ -1072,15 +1083,30 @@ chatInput.addEventListener('keydown', (e) => {
 
 createSettingsMenu();
 
-// ========== Оффлайн-магия ==========
+// ========== Оффлайн-магия (batch setBlock для взрывов) ==========
 let localMagic = null;
+let offlineBlockBatch = [];
+let offlineBlockTimer = null;
+
+function flushOfflineBlocks() {
+  const updates = offlineBlockBatch;
+  offlineBlockBatch = [];
+  if (!updates.length || !world) { offlineBlockTimer = null; return; }
+  const dirtySet = new Set();
+  for (const [x, y, z, t] of updates) {
+    world.setBlock(x, y, z, t).forEach(c => dirtySet.add(c));
+  }
+  dirtySet.forEach(c => { c.dirty = true; dirtyChunks.add(c); remeshChunk(c); });
+  offlineBlockTimer = null;
+}
+
 function makeLocalCtx() {
   return {
     getBlock: (x, y, z) => world.getBlock(x, y, z),
     setBlock: (x, y, z, t) => {
-      const dirty = world.setBlock(x, y, z, t);
-      dirty.forEach(c => c.dirty = true);
-      dirty.forEach(remeshChunk);
+      offlineBlockBatch.push([x, y, z, t]);
+      if (offlineBlockTimer) clearTimeout(offlineBlockTimer);
+      offlineBlockTimer = setTimeout(flushOfflineBlocks, 0);
     },
     terrainHeight: (x, z) => world.terrainHeight(x, z),
     getPlayers: () => [['me', { x: player.pos.x, y: player.pos.y, z: player.pos.z }]],

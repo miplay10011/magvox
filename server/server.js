@@ -303,9 +303,30 @@ function performShadowStep(casterId){
   }
 }
 
+// ===== Batch broadcast для блоков (взрывы не лагают) =====
+let pendingBlocks = [];
+let pendingTimer = null;
+
+function queueBlockUpdate(x,y,z,t){
+  edits.set(`${x},${y},${z}`, t);
+  pendingBlocks.push({x,y,z,t});
+  if (!pendingTimer) pendingTimer = setTimeout(flushBlockBroadcasts, 0);
+}
+
+function flushBlockBroadcasts(){
+  const blocks = pendingBlocks;
+  pendingBlocks = [];
+  pendingTimer = null;
+  if (blocks.length === 1){
+    broadcast('blockUpdate', blocks[0]);
+  } else if (blocks.length > 1){
+    broadcast('blocksUpdate', { blocks });
+  }
+}
+
 const magicCtx = {
   getBlock:(x,y,z)=>getBlockType(x,y,z),
-  setBlock(x,y,z,t){ edits.set(`${x},${y},${z}`,t); broadcast('blockUpdate',{x,y,z,t}); },
+  setBlock:(x,y,z,t)=>queueBlockUpdate(x,y,z,t),
   terrainHeight:getCachedHeight,
   getPlayers:()=>[...players].map(([id,q])=>[id,{x:q.x,y:q.y,z:q.z}]),
   applyDamage,
@@ -400,12 +421,12 @@ const magicCtx = {
               const bx=Math.floor(impactX+dx), bz=Math.floor(impactZ+dz);
               const yb=getCachedHeight(bx,bz);
               for (let h=0; h<Math.max(1,rad-Math.floor(Math.hypot(dx,dz))); h++){
-                edits.set(`${bx},${yb+h},${bz}`,STONE);
-                broadcast('blockUpdate',{x:bx,y:yb+h,z:bz,t:STONE});
+                queueBlockUpdate(bx, yb+h, bz, STONE);
               }
             }
           }
         }
+        flushBlockBroadcasts(); // сразу сбросить буфер взрыва
         broadcast('asteroidImpact',{x:impactX,z:impactZ,radius:rad});
       };
       explode(impactX,0,impactZ,radius,dmg,casterId);
