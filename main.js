@@ -271,9 +271,10 @@ let world = null;
 const FULL_RADIUS = 12;
 const dirtyChunks = new Set();
 
-// LOD: x5 distance, 4 blocks merged into 1
-const LOD_RADIUS = 60; // 12 * 5
-const LOD_BUDGET = 6;
+// ========== LOD superchunks (4x4 chunks = 64x64 blocks) ==========
+const LOD_SUPER_SCALE = 4;   // 1 superchunk = 4 ordinary chunks
+const LOD_SUPER_RADIUS = 12; // 12 superchunks = 768 blocks (~x4 from full)
+const LOD_BUDGET = 8;
 const lodMeshes = new Map();
 
 function remeshChunk(chunk) {
@@ -356,28 +357,52 @@ function lodManagerTick() {
   const pcx = Math.floor(player.pos.x / CHUNK_SIZE);
   const pcz = Math.floor(player.pos.z / CHUNK_SIZE);
 
+  const superPlayerCx = Math.floor(pcx / LOD_SUPER_SCALE);
+  const superPlayerCz = Math.floor(pcz / LOD_SUPER_SCALE);
+
   const wantLod = new Set();
-  for (let dx = -LOD_RADIUS; dx <= LOD_RADIUS; dx++) {
-    const adx = Math.abs(dx);
-    for (let dz = -LOD_RADIUS; dz <= LOD_RADIUS; dz++) {
-      if (adx <= FULL_RADIUS && Math.abs(dz) <= FULL_RADIUS) continue;
-      wantLod.add(`${pcx + dx},${pcz + dz}`);
+
+  for (let dsx = -LOD_SUPER_RADIUS; dsx <= LOD_SUPER_RADIUS; dsx++) {
+    for (let dsz = -LOD_SUPER_RADIUS; dsz <= LOD_SUPER_RADIUS; dsz++) {
+      const scx = superPlayerCx + dsx;
+      const scz = superPlayerCz + dsz;
+
+      // Which ordinary chunks does this superchunk cover?
+      const minCx = scx * LOD_SUPER_SCALE;
+      const maxCx = minCx + LOD_SUPER_SCALE - 1;
+      const minCz = scz * LOD_SUPER_SCALE;
+      const maxCz = minCz + LOD_SUPER_SCALE - 1;
+
+      // Skip if it overlaps the full-chunk area
+      const fullMinX = pcx - FULL_RADIUS;
+      const fullMaxX = pcx + FULL_RADIUS;
+      const fullMinZ = pcz - FULL_RADIUS;
+      const fullMaxZ = pcz + FULL_RADIUS;
+
+      if (maxCx >= fullMinX && minCx <= fullMaxX &&
+          maxCz >= fullMinZ && minCz <= fullMaxZ) {
+        continue; // overlaps full-quality area
+      }
+
+      wantLod.add(`${scx},${scz}`);
     }
   }
 
-  // удалить лишние
+  // Remove far-away LOD meshes
   for (const [key, mesh] of lodMeshes) {
     if (wantLod.has(key)) continue;
-    scene.remove(mesh); mesh.geometry.dispose(); lodMeshes.delete(key);
+    scene.remove(mesh);
+    mesh.geometry.dispose();
+    lodMeshes.delete(key);
   }
 
-  // создать новые
+  // Create new LOD meshes (budget-limited per tick)
   let lodGen = LOD_BUDGET;
   for (const key of wantLod) {
     if (lodMeshes.has(key)) continue;
     if (lodGen-- <= 0) break;
-    const [lcx, lcz] = key.split(',').map(Number);
-    const mesh = buildLODChunkMesh(world, lcx, lcz);
+    const [scx, scz] = key.split(',').map(Number);
+    const mesh = buildLODChunkMesh(world, scx, scz);
     if (mesh) {
       lodMeshes.set(key, mesh);
       scene.add(mesh);
@@ -385,7 +410,7 @@ function lodManagerTick() {
   }
 }
 
-setInterval(lodManagerTick, 200);
+setInterval(lodManagerTick, 100);
 
 // ========== Статы и эффекты ==========
 const stats = { hp: 50, armor: 0, mana: 20, maxMana: 20 };

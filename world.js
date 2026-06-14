@@ -324,50 +324,54 @@ export function buildChunkMesh(world, chunk) {
   return mesh;
 }
 
-// ---------- LOD mesh: 4 blocks in 1 ----------
-export function buildLODChunkMesh(world, cx, cz) {
-  const STEP = 4;
-  const COLS = CHUNK_SIZE / STEP; // 4
+// ---------- LOD superchunk: 4x4 chunks (64x64 blocks) merged ----------
+export function buildLODChunkMesh(world, scx, scz) {
+  const SUPER = 4;         // 1 superchunk = 4x4 ordinary chunks
+  const SCALE = 4;         // 1 LOD column = 4x4 blocks
+  const COLS = (CHUNK_SIZE * SUPER) / SCALE; // 16 columns per side
+  const SIZE = CHUNK_SIZE * SUPER;         // 64 blocks total size
+  
   const positions = [], normals = [], colors = [], indices = [];
-  const wx0 = cx * CHUNK_SIZE, wz0 = cz * CHUNK_SIZE;
+  const wx0 = scx * SIZE;
+  const wz0 = scz * SIZE;
 
-  const addFace = (x1,y1,z1, x2,y2,z2, x3,y3,z3, x4,y4,z4, nx,ny,nz, col) => {
-    const base = positions.length / 3;
-    positions.push(x1,y1,z1, x2,y2,z2, x3,y3,z3, x4,y4,z4);
-    for (let i=0;i<4;i++){ normals.push(nx,ny,nz); colors.push(col.r,col.g,col.b); }
-    indices.push(base, base+1, base+2, base, base+2, base+3);
-  };
+  // Precompute heights for the whole 64x64 area
+  const heights = new Float32Array(COLS * COLS);
+  for (let lz = 0; lz < COLS; lz++) {
+    for (let lx = 0; lx < COLS; lx++) {
+      const wx = wx0 + lx * SCALE + SCALE * 0.5;
+      const wz = wz0 + lz * SCALE + SCALE * 0.5;
+      const hRaw = world.terrainHeight(wx, wz);
+      heights[lx + lz * COLS] = Math.max(1, Math.min(WORLD_HEIGHT - 1, Math.floor(hRaw)));
+    }
+  }
 
   for (let lz = 0; lz < COLS; lz++) {
     for (let lx = 0; lx < COLS; lx++) {
-      const wx = wx0 + lx * STEP + STEP * 0.5;
-      const wz = wz0 + lz * STEP + STEP * 0.5;
-      const hRaw = world.terrainHeight(wx, wz);
-      const h = Math.max(1, Math.min(WORLD_HEIGHT - 1, Math.floor(hRaw)));
-      const biome = world.getBiome(wx, wz);
+      const idx = lx + lz * COLS;
+      const h = heights[idx];
 
+      const wx = wx0 + lx * SCALE + SCALE * 0.5;
+      const wz = wz0 + lz * SCALE + SCALE * 0.5;
+      const biome = world.getBiome(wx, wz);
       let topType = GRASS;
       if (biome === 'desert') topType = SAND;
       else if (biome === 'mountain') topType = STONE;
       const c = BLOCK_COLORS[topType];
 
-      const x0 = wx0 + lx * STEP;
-      const x1 = x0 + STEP;
-      const z0 = wz0 + lz * STEP;
-      const z1 = z0 + STEP;
+      const x0 = wx0 + lx * SCALE;
+      const x1 = x0 + SCALE;
+      const z0 = wz0 + lz * SCALE;
+      const z1 = z0 + SCALE;
 
-      // Top
-      addFace(x0,h,z1, x1,h,z1, x1,h,z0, x0,h,z0, 0,1,0, c);
-      // Bottom
-      addFace(x0,0,z0, x1,0,z0, x1,0,z1, x0,0,z1, 0,-1,0, c);
-      // Front (z+)
-      addFace(x0,0,z1, x1,0,z1, x1,h,z1, x0,h,z1, 0,0,1, c);
-      // Back (z-)
-      addFace(x1,0,z0, x0,0,z0, x0,h,z0, x1,h,z0, 0,0,-1, c);
-      // Right (x+)
-      addFace(x1,0,z1, x1,0,z0, x1,h,z0, x1,h,z1, 1,0,0, c);
-      // Left (x-)
-      addFace(x0,0,z0, x0,0,z1, x0,h,z1, x0,h,z0, -1,0,0, c);
+      const base = positions.length / 3;
+      // Top face only — enough for distant terrain
+      positions.push(x0, h, z1, x1, h, z1, x1, h, z0, x0, h, z0);
+      for (let i = 0; i < 4; i++) {
+        normals.push(0, 1, 0);
+        colors.push(c.r, c.g, c.b);
+      }
+      indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
     }
   }
 
