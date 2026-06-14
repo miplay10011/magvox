@@ -609,7 +609,7 @@ const magicCtx = {
   spawn(0, 0, baseDamage, baseRadius, 1.2);   // центральный
   spawn(1.2, 1.5, sideDamage, sideRadius, 0.8); // левый
   spawn(-1.2, 1.5, sideDamage, sideRadius, 0.8); // правый
-},
+};
 
 const magic = createMagicEngine(magicCtx);
 
