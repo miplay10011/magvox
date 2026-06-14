@@ -1539,19 +1539,7 @@ document.addEventListener('contextmenu', (e) => e.preventDefault());
 document.addEventListener('mousedown', (e) => {
   if (!world || document.pointerLockElement !== renderer.domElement) return;
 
-  if (combatMode) {
-    if (e.button === 0) {
-      if (spellQueue.length) castSpell();
-      else {
-        const t = raycastPlayers(4.5);
-        if (t) net.send('attack', { target: t.id });
-      }
-    } else if (e.button === 2) {
-      spellQueue.pop();
-      refreshQueueUI();
-    }
-    return;
-  }
+  
   if (combatMode) {
   if (e.button === 0) {  // ЛКМ
     if (spellQueue.length) castSpell('left');
