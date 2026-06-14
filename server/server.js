@@ -323,6 +323,31 @@ function addTotem(casterId, x, z, radius, duration) {
   }, duration * 1000);
 }
 
+// ========== Реализация теневого шага (обработка запроса от магии) ==========
+function performShadowStep(casterId) {
+  const caster = players.get(casterId);
+  if (!caster) return;
+  let nearest = null, minDist = Infinity;
+  for (const [pid, p] of players) {
+    if (pid === casterId) continue;
+    const dist = Math.hypot(caster.x - p.x, caster.z - p.z);
+    if (dist < minDist && dist < 10) { minDist = dist; nearest = p; }
+  }
+  if (nearest) {
+    const dirX = -Math.sin(nearest.yaw), dirZ = -Math.cos(nearest.yaw);
+    const teleX = nearest.x + dirX * 1.5;
+    const teleZ = nearest.z + dirZ * 1.5;
+    const teleY = terrainHeight(teleX, teleZ) + 1;
+    const oldX = caster.x, oldZ = caster.z;
+    caster.x = teleX; caster.y = teleY; caster.z = teleZ;
+    broadcast('teleport', { id: casterId, x: caster.x, y: caster.y, z: caster.z });
+    broadcast('shadowStepFx', { x0: oldX, z0: oldZ, x1: caster.x, z1: caster.z });
+    broadcast('systemMessage', { message: `${caster.nickname} использовал Теневой шаг` });
+  } else {
+    send(caster.ws, 'systemMessage', { message: 'Нет цели для теневого шага' });
+  }
+}
+
 // ========== Контекст для магии ==========
 const magicCtx = {
   getBlock: (x,y,z) => getBlockType(x,y,z),
@@ -333,13 +358,17 @@ const magicCtx = {
   addEffect(id, type, dur, power) {
     const q = players.get(id);
     if (!q) return;
-    let powerValue = power?.power ?? power;
-    if (type === 'regen') {
-      q.effects.set(type, { until: Date.now() + dur*1000, power: powerValue, lastTick: Date.now() });
+    // Сохраняем любые дополнительные поля (например, radius для fire_aura)
+    let effectData;
+    if (power && typeof power === 'object') {
+      effectData = { ...power, until: Date.now() + dur*1000 };
     } else {
-      q.effects.set(type, { until: Date.now() + dur*1000, power: powerValue });
+      effectData = { power: power, until: Date.now() + dur*1000 };
     }
-    if (type === 'phoenix') q.phoenixUsed = false;
+    if (type === 'regen') {
+      effectData.lastTick = Date.now();
+    }
+    q.effects.set(type, effectData);
     syncEffects(q);
   },
   healPlayer(id, amount) {
@@ -367,7 +396,14 @@ const magicCtx = {
     q.x = x; q.y = y; q.z = z;
     broadcast('teleport', { id, x: q.x, y: q.y, z: q.z });
   },
-  emit: (type, data) => broadcast(type, data),
+  emit: (type, data) => {
+    // Специальная обработка для запросов от магии
+    if (type === 'shadowStepRequest') {
+      performShadowStep(data.casterId);
+    } else {
+      broadcast(type, data);
+    }
+  },
   addZone,
   addTotem,
   addTimeSlowZone,
@@ -666,25 +702,8 @@ wss.on('connection', (ws) => {
     } else if (msg.type === 'chat') {
       broadcast('chat', { senderId: id, senderNick: q.nickname, message: msg.message }, id);
     } else if (msg.type === 'shadow_step') {
-      let nearest = null, minDist = Infinity;
-      for (const [pid, p] of players) {
-        if (pid === id) continue;
-        const dist = Math.hypot(q.x - p.x, q.z - p.z);
-        if (dist < minDist && dist < 10) { minDist = dist; nearest = p; }
-      }
-      if (nearest) {
-        const dirX = -Math.sin(nearest.yaw), dirZ = -Math.cos(nearest.yaw);
-        const teleX = nearest.x + dirX * 1.5;
-        const teleZ = nearest.z + dirZ * 1.5;
-        const teleY = terrainHeight(teleX, teleZ) + 1;
-        const oldX = q.x, oldZ = q.z;
-        q.x = teleX; q.y = teleY; q.z = teleZ;
-        broadcast('teleport', { id, x: q.x, y: q.y, z: q.z });
-        broadcast('shadowStepFx', { x0: oldX, z0: oldZ, x1: q.x, z1: q.z });
-        broadcast('systemMessage', { message: `${q.nickname} использовал Теневой шаг` });
-      } else {
-        send(q.ws, 'systemMessage', { message: 'Нет цели для теневого шага' });
-      }
+      // ручной вызов (на случай, если клиент сам отправляет)
+      performShadowStep(id);
     } else if (msg.type === 'swap_positions') {
       const target = players.get(msg.target);
       if (target && Math.hypot(q.x - target.x, q.z - target.z) < 10) {
