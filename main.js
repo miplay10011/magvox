@@ -268,7 +268,7 @@ let yaw = 0, pitch = 0;
 
 // ========== Мир + менеджер чанков ==========
 let world = null;
-const FULL_RADIUS = 14;
+const FULL_RADIUS = 8;
 const dirtyChunks = new Set();
 
 // ========== LOD superchunks (4x4 chunks = 64x64 blocks) ==========
@@ -304,7 +304,7 @@ function chunkManagerTick() {
   const pcz = Math.floor(player.pos.z / CHUNK_SIZE);
 
   // 1. Отложенный ремеш (до 6 за тик)
-  let dirtyBudget = 6;
+  let dirtyBudget = 4;
   for (const chunk of dirtyChunks) {
     if (dirtyBudget-- <= 0) break;
     dirtyChunks.delete(chunk);
