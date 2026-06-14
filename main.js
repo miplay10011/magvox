@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { World, buildChunkMesh, AIR, BLOCK_COLORS, CHUNK_SIZE,
+import { World, buildChunkMesh, buildLODChunkMesh, AIR, BLOCK_COLORS, CHUNK_SIZE,
          GRASS, DIRT, STONE, WOOD, LEAVES, PLANKS, SAND, GRAVEL, COAL_ORE, IRON_ORE } from './world.js';
 import { Network } from './network.js';
 import { createMagicEngine } from './magic.js';
@@ -266,10 +266,15 @@ const player = {
 };
 let yaw = 0, pitch = 0;
 
-// ========== Мир + менеджер чанков (максимальная дистанция, binary dirty cache) ==========
+// ========== Мир + менеджер чанков ==========
 let world = null;
 const FULL_RADIUS = 12;
 const dirtyChunks = new Set();
+
+// LOD: x5 distance, 4 blocks merged into 1
+const LOD_RADIUS = 60; // 12 * 5
+const LOD_BUDGET = 6;
+const lodMeshes = new Map();
 
 function remeshChunk(chunk) {
   if (!chunk || !chunk.dirty) return;
@@ -284,6 +289,11 @@ function startWorld(seed, edits = []) {
   for (const [key, t] of edits) world.edits.set(key, t);
   player.pos.set(0.5, world.terrainHeight(0, 0) + 1, 0.5);
   player.vel.set(0, 0, 0);
+  // очистить старые LOD
+  for (const [key, mesh] of lodMeshes) {
+    scene.remove(mesh); mesh.geometry.dispose();
+  }
+  lodMeshes.clear();
   chunkManagerTick();
 }
 
@@ -292,7 +302,7 @@ function chunkManagerTick() {
   const pcx = Math.floor(player.pos.x / CHUNK_SIZE);
   const pcz = Math.floor(player.pos.z / CHUNK_SIZE);
 
-  // 1. Отложенный ремеш соседей / взрывных чанков (до 6 за тик)
+  // 1. Отложенный ремеш (до 6 за тик)
   let dirtyBudget = 6;
   for (const chunk of dirtyChunks) {
     if (dirtyBudget-- <= 0) break;
@@ -300,7 +310,7 @@ function chunkManagerTick() {
     remeshChunk(chunk);
   }
 
-  // 2. Удаление далёких чанков
+  // 2. Удаление далёких full чанков
   const wantFull = new Set();
   for (let dx = -FULL_RADIUS; dx <= FULL_RADIUS; dx++)
     for (let dz = -FULL_RADIUS; dz <= FULL_RADIUS; dz++)
@@ -315,7 +325,7 @@ function chunkManagerTick() {
     world.chunks.delete(key);
   }
 
-  // 3. Генерация недостающих (2 чанка за тик = 50 чанков/сек при 40мс интервале)
+  // 3. Генерация full чанков (2 за тик)
   const missing = [];
   for (let dx = -FULL_RADIUS; dx <= FULL_RADIUS; dx++)
     for (let dz = -FULL_RADIUS; dz <= FULL_RADIUS; dz++) {
@@ -339,6 +349,43 @@ function chunkManagerTick() {
 }
 
 setInterval(chunkManagerTick, 40);
+
+// ========== LOD manager (отдельный тик, реже) ==========
+function lodManagerTick() {
+  if (!world) return;
+  const pcx = Math.floor(player.pos.x / CHUNK_SIZE);
+  const pcz = Math.floor(player.pos.z / CHUNK_SIZE);
+
+  const wantLod = new Set();
+  for (let dx = -LOD_RADIUS; dx <= LOD_RADIUS; dx++) {
+    const adx = Math.abs(dx);
+    for (let dz = -LOD_RADIUS; dz <= LOD_RADIUS; dz++) {
+      if (adx <= FULL_RADIUS && Math.abs(dz) <= FULL_RADIUS) continue;
+      wantLod.add(`${pcx + dx},${pcz + dz}`);
+    }
+  }
+
+  // удалить лишние
+  for (const [key, mesh] of lodMeshes) {
+    if (wantLod.has(key)) continue;
+    scene.remove(mesh); mesh.geometry.dispose(); lodMeshes.delete(key);
+  }
+
+  // создать новые
+  let lodGen = LOD_BUDGET;
+  for (const key of wantLod) {
+    if (lodMeshes.has(key)) continue;
+    if (lodGen-- <= 0) break;
+    const [lcx, lcz] = key.split(',').map(Number);
+    const mesh = buildLODChunkMesh(world, lcx, lcz);
+    if (mesh) {
+      lodMeshes.set(key, mesh);
+      scene.add(mesh);
+    }
+  }
+}
+
+setInterval(lodManagerTick, 200);
 
 // ========== Статы и эффекты ==========
 const stats = { hp: 50, armor: 0, mana: 20, maxMana: 20 };

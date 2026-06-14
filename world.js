@@ -24,11 +24,6 @@ for (let i = 1; i <= 10; i++) {
   const c = BLOCK_COLORS[i];
   CR[i] = c.r; CG[i] = c.g; CB[i] = c.b;
 }
-const NRM = new Float32Array([
-   1, 0, 0,  -1, 0, 0,
-   0, 1, 0,   0,-1, 0,
-   0, 0, 1,   0, 0,-1
-]);
 
 export class Chunk {
   constructor(cx, cz) {
@@ -270,8 +265,13 @@ export function buildChunkMesh(world, chunk) {
           const px = x[0]+wx0, py = x[1], pz = x[2]+wz0;
           const type = Math.abs(cell);
           const backface = cell < 0;
-          const ni = (d*2 + (backface?1:0))*3;
-          const nx = NRM[ni], ny = NRM[ni+1], nz = NRM[ni+2];
+          const nx = backface ? -(du[1]*dv[2]-du[2]*dv[1]) : (du[1]*dv[2]-du[2]*dv[1]);
+          const ny = backface ? -(du[2]*dv[0]-du[0]*dv[2]) : (du[2]*dv[0]-du[0]*dv[2]);
+          const nz = backface ? -(du[0]*dv[1]-du[1]*dv[0]) : (du[0]*dv[1]-du[1]*dv[0]);
+          const l = Math.sqrt(nx*nx+ny*ny+nz*nz)||1;
+          const inv = 1/l;
+          const fnx = nx*inv, fny = ny*inv, fnz = nz*inv;
+
           const cr = CR[type], cg = CG[type], cb = CB[type];
 
           const x0=px,               y0=py,               z0=pz;
@@ -281,21 +281,21 @@ export function buildChunkMesh(world, chunk) {
 
           const base = vp / 3;
 
-          pos[vp]=x0; nrm[vp]=nx; col[vp]=cr; vp++;
-          pos[vp]=y0; nrm[vp]=ny; col[vp]=cg; vp++;
-          pos[vp]=z0; nrm[vp]=nz; col[vp]=cb; vp++;
+          pos[vp]=x0; nrm[vp]=fnx; col[vp]=cr; vp++;
+          pos[vp]=y0; nrm[vp]=fny; col[vp]=cg; vp++;
+          pos[vp]=z0; nrm[vp]=fnz; col[vp]=cb; vp++;
 
-          pos[vp]=x1; nrm[vp]=nx; col[vp]=cr; vp++;
-          pos[vp]=y1; nrm[vp]=ny; col[vp]=cg; vp++;
-          pos[vp]=z1; nrm[vp]=nz; col[vp]=cb; vp++;
+          pos[vp]=x1; nrm[vp]=fnx; col[vp]=cr; vp++;
+          pos[vp]=y1; nrm[vp]=fny; col[vp]=cg; vp++;
+          pos[vp]=z1; nrm[vp]=fnz; col[vp]=cb; vp++;
 
-          pos[vp]=x2; nrm[vp]=nx; col[vp]=cr; vp++;
-          pos[vp]=y2; nrm[vp]=ny; col[vp]=cg; vp++;
-          pos[vp]=z2; nrm[vp]=nz; col[vp]=cb; vp++;
+          pos[vp]=x2; nrm[vp]=fnx; col[vp]=cr; vp++;
+          pos[vp]=y2; nrm[vp]=fny; col[vp]=cg; vp++;
+          pos[vp]=z2; nrm[vp]=fnz; col[vp]=cb; vp++;
 
-          pos[vp]=x3; nrm[vp]=nx; col[vp]=cr; vp++;
-          pos[vp]=y3; nrm[vp]=ny; col[vp]=cg; vp++;
-          pos[vp]=z3; nrm[vp]=nz; col[vp]=cb; vp++;
+          pos[vp]=x3; nrm[vp]=fnx; col[vp]=cr; vp++;
+          pos[vp]=y3; nrm[vp]=fny; col[vp]=cg; vp++;
+          pos[vp]=z3; nrm[vp]=fnz; col[vp]=cb; vp++;
 
           if (backface) {
             idx[ip++] = base;   idx[ip++] = base+2; idx[ip++] = base+1;
@@ -318,6 +318,65 @@ export function buildChunkMesh(world, chunk) {
   geo.setAttribute('normal',   new THREE.Float32BufferAttribute(nrm.subarray(0, vp), 3));
   geo.setAttribute('color',    new THREE.Float32BufferAttribute(col.subarray(0, vp), 3));
   geo.setIndex(new THREE.Uint32BufferAttribute(idx.subarray(0, ip), 1));
+  const mesh = new THREE.Mesh(geo, CHUNK_MATERIAL);
+  mesh.matrixAutoUpdate = false;
+  mesh.updateMatrix();
+  return mesh;
+}
+
+// ---------- LOD mesh: 4 blocks in 1 ----------
+export function buildLODChunkMesh(world, cx, cz) {
+  const STEP = 4;
+  const COLS = CHUNK_SIZE / STEP; // 4
+  const positions = [], normals = [], colors = [], indices = [];
+  const wx0 = cx * CHUNK_SIZE, wz0 = cz * CHUNK_SIZE;
+
+  const addFace = (x1,y1,z1, x2,y2,z2, x3,y3,z3, x4,y4,z4, nx,ny,nz, col) => {
+    const base = positions.length / 3;
+    positions.push(x1,y1,z1, x2,y2,z2, x3,y3,z3, x4,y4,z4);
+    for (let i=0;i<4;i++){ normals.push(nx,ny,nz); colors.push(col.r,col.g,col.b); }
+    indices.push(base, base+1, base+2, base, base+2, base+3);
+  };
+
+  for (let lz = 0; lz < COLS; lz++) {
+    for (let lx = 0; lx < COLS; lx++) {
+      const wx = wx0 + lx * STEP + STEP * 0.5;
+      const wz = wz0 + lz * STEP + STEP * 0.5;
+      const hRaw = world.terrainHeight(wx, wz);
+      const h = Math.max(1, Math.min(WORLD_HEIGHT - 1, Math.floor(hRaw)));
+      const biome = world.getBiome(wx, wz);
+
+      let topType = GRASS;
+      if (biome === 'desert') topType = SAND;
+      else if (biome === 'mountain') topType = STONE;
+      const c = BLOCK_COLORS[topType];
+
+      const x0 = wx0 + lx * STEP;
+      const x1 = x0 + STEP;
+      const z0 = wz0 + lz * STEP;
+      const z1 = z0 + STEP;
+
+      // Top
+      addFace(x0,h,z1, x1,h,z1, x1,h,z0, x0,h,z0, 0,1,0, c);
+      // Bottom
+      addFace(x0,0,z0, x1,0,z0, x1,0,z1, x0,0,z1, 0,-1,0, c);
+      // Front (z+)
+      addFace(x0,0,z1, x1,0,z1, x1,h,z1, x0,h,z1, 0,0,1, c);
+      // Back (z-)
+      addFace(x1,0,z0, x0,0,z0, x0,h,z0, x1,h,z0, 0,0,-1, c);
+      // Right (x+)
+      addFace(x1,0,z1, x1,0,z0, x1,h,z0, x1,h,z1, 1,0,0, c);
+      // Left (x-)
+      addFace(x0,0,z0, x0,0,z1, x0,h,z1, x0,h,z0, -1,0,0, c);
+    }
+  }
+
+  if (!positions.length) return null;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('normal',   new THREE.Float32BufferAttribute(normals, 3));
+  geo.setAttribute('color',    new THREE.Float32BufferAttribute(colors, 3));
+  geo.setIndex(indices);
   const mesh = new THREE.Mesh(geo, CHUNK_MATERIAL);
   mesh.matrixAutoUpdate = false;
   mesh.updateMatrix();
