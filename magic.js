@@ -137,6 +137,7 @@ export function createMagicEngine(ctx) {
   }
 
   function cast(casterId, els, dirArr, origin, yaw, hand = 'left') {
+    try {
   if (!validate(els)) return;
   const now = Date.now();
   if (now - (lastCast.get(casterId) || 0) < CAST_COOLDOWN) return;
@@ -406,12 +407,20 @@ export function createMagicEngine(ctx) {
           nearest = id;
         }
       if (nearest) {
-        ctx.applyDamage(nearest, 10, { ax: ox, az: oz, kb: 5, attackerId: casterId, weapon: 'электричество' });
-        // поиск второго врага рядом
-        for (const [id2,p2] of ctx.getPlayers())
-          if (id2 !== casterId && id2 !== nearest && Math.hypot(p2.x-ctx.getPlayer(nearest).x, p2.z-ctx.getPlayer(nearest).z) < 5)
-            ctx.applyDamage(id2, 6, { ax: ox, az: oz, kb: 3, attackerId: casterId, weapon: 'электричество' });
-      }
+        let nearestPos = null;
+        for (const [id, p] of ctx.getPlayers()) {
+          if (id === nearest) { nearestPos = p; break; }
+        }
+        if (nearestPos) {
+          ctx.applyDamage(nearest, 10, { ax: ox, az: oz, kb: 5, attackerId: casterId, weapon: 'электричество' });
+          // поиск второго врага рядом
+          for (const [id2, p2] of ctx.getPlayers()) {
+            if (id2 !== casterId && id2 !== nearest && Math.hypot(p2.x - nearestPos.x, p2.z - nearestPos.z) < 5) {
+              ctx.applyDamage(id2, 6, { ax: ox, az: oz, kb: 3, attackerId: casterId, weapon: 'электричество' });
+            }
+          }
+        }
+}     
     } else {
       // Заземление – резист к молнии и небольшой щит
       ctx.addEffect(casterId, 'ward', 10, { power: 3 });
@@ -565,14 +574,15 @@ export function createMagicEngine(ctx) {
           ctx.addEffect(id, 'freeze', 5, 1);
     } else {
       // Ледяная тюрьма – стена вокруг цели (выделить врага)
-      let nearest = null;
-      for (const [id,p] of ctx.getPlayers())
-        if (id !== casterId && (!nearest || Math.hypot(p.x-ox, p.z-oz) < Math.hypot(nearest.x-ox, nearest.z-oz)))
+        let nearest = null, nearestPos = null;
+      for (const [id,p] of ctx.getPlayers()) {
+        if (id !== casterId && (!nearest || Math.hypot(p.x-ox, p.z-oz) < Math.hypot(nearest.x-ox, nearest.z-oz))) {
           nearest = id;
-      if (nearest) {
-        const p = ctx.getPlayer(nearest);
-        stoneWall(p.x, p.z, yaw, 4);
+          nearestPos = p;
+        }
       }
+      if (nearest && nearestPos) {
+        stoneWall(nearestPos.x, nearestPos.z, yaw, 4);}
     }
     return;
   }
@@ -938,6 +948,9 @@ export function createMagicEngine(ctx) {
     ctx.addEffect(casterId, 'ward', 10, { power: shieldPower });
     if (dmg > 8) ctx.healPlayer(casterId, Math.floor(dmg / 3));
     else ctx.addEffect(casterId, 'stoneskin', 6, 2);
+  }
+  } catch (err) {
+    console.error(`Cast error for player ${casterId}:`, err);
   }
 }
 
