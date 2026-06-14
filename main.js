@@ -1084,16 +1084,16 @@ function makeLocalCtx() {
   };
 }
 
-function castSpell() {
+function castSpell(hand = 'left') {
   if (!spellQueue.length) return;
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
   if (net.connected) {
-    net.send('cast', { elements: [...spellQueue], dir: [dir.x, dir.y, dir.z] });
+    net.send('cast', { elements: [...spellQueue], dir: [dir.x, dir.y, dir.z], hand });
   } else {
     if (!localMagic) localMagic = createMagicEngine(makeLocalCtx());
     localMagic.cast('me', [...spellQueue], [dir.x, dir.y, dir.z],
-      { x: camera.position.x, y: camera.position.y, z: camera.position.z }, yaw);
+      { x: camera.position.x, y: camera.position.y, z: camera.position.z }, yaw, hand);
   }
   spellQueue.length = 0;
   refreshQueueUI();
@@ -1552,6 +1552,17 @@ document.addEventListener('mousedown', (e) => {
     }
     return;
   }
+  if (combatMode) {
+  if (e.button === 0) {  // ЛКМ
+    if (spellQueue.length) castSpell('left');
+    else { const t = raycastPlayers(4.5);
+        if (t) net.send('attack', { target: t.id }); }
+  } else if (e.button === 2) {  // ПКМ
+    if (spellQueue.length) castSpell('right');
+    
+  }
+  return;
+}
 
   const hit = raycastBlock(5);
   if (e.button === 0) {

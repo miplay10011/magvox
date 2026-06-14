@@ -136,7 +136,7 @@ export function createMagicEngine(ctx) {
       { ax: ox, az: oz, kb: 4, attackerId: casterId, weapon: 'магии' });
   }
 
-  function cast(casterId, els, dirArr, origin, yaw) {
+  function cast(casterId, els, dirArr, origin, yaw, hand = 'left') {
     if (!validate(els)) return;
     const now = Date.now();
     if (now - (lastCast.get(casterId) || 0) < CAST_COOLDOWN) return;
@@ -258,6 +258,10 @@ export function createMagicEngine(ctx) {
         ctx.createProtectionSphere(casterId, ox, oy - 1, oz, 8);
         return;
       }
+      if (n('shield') === 1 && n('earth') === 4) {
+        stoneWall(ox, oz, yaw, len);
+        return;
+      }
       if (n('fire') === 1 && n('earth') === 1 && n('dark') === 1 && n('beam') === 1 && n('air') === 1) {
         const targetX = ox + dx * 8;
         const targetZ = oz + dz * 8;
@@ -342,28 +346,7 @@ export function createMagicEngine(ctx) {
       spawnProjectile(casterId, 'meteor', targetX, 50, targetZ, 0, -20, 0, {
         gravity: true,
         explosive: true,
-        radius: 5 + n('earth'),
-        dmg: 14 + 2 * len,
-        scale: 2.5
-      });
-      spawnProjectile(casterId, 'meteor', targetX, 150, targetZ+10, 0, -20, 0, {
-        gravity: true,
-        explosive: true,
-        radius: 5 + n('earth'),
-        dmg: 14 + 2 * len,
-        scale: 2.5
-      });
-      spawnProjectile(casterId, 'meteor', targetX-15, 100, targetZ-10, 0, -20, 0, {
-        gravity: true,
-        explosive: true,
-        radius: 5 + n('earth'),
-        dmg: 14 + 2 * len,
-        scale: 2.5
-      });
-      spawnProjectile(casterId, 'meteor', targetX-15, 130, targetZ-10, 0, -20, 0, {
-        gravity: true,
-        explosive: true,
-        radius: 5 + n('earth'),
+        radius: 2 + n('earth'),
         dmg: 14 + 2 * len,
         scale: 2.5
       });

@@ -683,7 +683,7 @@ wss.on('connection', (ws) => {
       }
       applyDamage(msg.target, 4, { ax: q.x, az: q.z, kb: 8, attackerId: id, weapon: 'меча' });
     } else if (msg.type === 'cast') {
-      magic.cast(id, msg.elements, msg.dir, { x: q.x, y: q.y + 1.62, z: q.z }, q.yaw);
+      magic.cast(id, msg.elements, msg.dir, { x: q.x, y: q.y + 1.62, z: q.z }, q.yaw, msg.hand || 'left');
     } else if (msg.type === 'chat') {
       broadcast('chat', { senderId: id, senderNick: q.nickname, message: msg.message }, id);
     } else if (msg.type === 'shadow_step') {
