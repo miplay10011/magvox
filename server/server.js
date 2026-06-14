@@ -21,7 +21,7 @@ const httpServer = http.createServer((req, res) => {
   });
 });
 
-// ---------- Блоки ----------
+// ==================== БЛОКИ (совместимость с world.js) ====================
 const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, WOOD = 4, LEAVES = 5;
 const PLANKS = 6, SAND = 7, GRAVEL = 8, COAL_ORE = 9, IRON_ORE = 10;
 const ICE = 11, SNOW_BLOCK = 12, CACTUS = 13;
@@ -32,14 +32,16 @@ const CHERRY_LOG = 29, CHERRY_LEAVES = 30, MUSHROOM_STEM = 31;
 const RED_MUSHROOM = 32, BROWN_MUSHROOM = 33, CORAL = 34, SPONGE = 35;
 const MYCELIUM = 36, TERRACOTTA = 37, PACKED_ICE = 38;
 
-// ---------- Никнеймы ----------
+const WORLD_HEIGHT = 128;
+
+// ==================== НИКНЕЙМЫ ====================
 const ADJECTIVES = ["Весёлый","Храбрый","Тихий","Быстрый","Умный","Смелый","Добрый","Злой","Магический","Ледяной","Огненный","Тёмный","Светлый","Летающий","Подземный","Древний","Могучий"];
 const NOUNS = ["Волшебник","Маг","Чародей","Колдун","Шаман","Друид","Некромант","Иллюзионист","Алхимик","Варлок","Магистр","Архимаг","Мистик","Заклинатель"];
 function randomNickname() {
   return `${ADJECTIVES[Math.floor(Math.random()*ADJECTIVES.length)]}${NOUNS[Math.floor(Math.random()*NOUNS.length)]}${Math.floor(Math.random()*1000)}`;
 }
 
-// ---------- Шум Перлина ----------
+// ==================== ШУМ ПЕРЛИНА ====================
 const PERM = [151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,190,6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,88,237,149,56,87,174,20,125,136,171,168,68,175,74,165,71,134,139,48,27,166,77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,102,143,54,65,25,63,161,1,216,80,73,209,76,132,187,208,89,18,169,200,196,135,130,116,188,159,86,164,100,109,198,173,186,3,64,52,217,226,250,124,123,5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,223,183,170,213,119,248,152,2,44,154,163,70,221,153,101,155,167,43,172,9,129,22,39,253,19,98,108,110,79,113,224,232,178,185,112,104,218,246,97,228,251,34,242,193,238,210,144,12,191,179,162,241,81,51,145,235,249,14,239,107,49,192,214,31,181,199,106,157,184,84,204,176,115,121,50,45,127,4,150,254,138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180];
 const p = new Array(512);
 for (let i = 0; i < 256; i++) p[i] = p[i+256] = PERM[i];
@@ -66,123 +68,105 @@ function noise(x,y,z) {
 
 let seed;
 function getBiome(wx, wz) {
-  const val = (noise(wx * 0.008 + seed, wz * 0.008 + seed, 300) + 1) / 2;
-  const val2 = (noise(wx * 0.02 + seed, wz * 0.02 + seed, 400) + 1) / 2;
-  const val3 = (noise(wx * 0.005 + seed, wz * 0.005 + seed, 500) + 1) / 2;
-  if (val < 0.05) return 'coral_reef';
-  if (val < 0.10) return 'mushroom';
-  if (val < 0.15) return 'cherry_grove';
-  if (val < 0.20) return 'bamboo_forest';
-  if (val < 0.25) return 'volcanic';
-  if (val < 0.30) return 'soul_sand_valley';
-  if (val < 0.35) return 'end_highlands';
-  if (val < 0.40) return 'nether_wastes';
-  if (val < 0.45 && val2 > 0.6) return 'desert';
-  if (val < 0.48 && val2 > 0.7) return 'oasis';
-  if (val < 0.52 && val3 > 0.7) return 'ice_spikes';
-  if (val < 0.56) return 'snow';
-  if (val < 0.60) return 'ice';
-  if (val < 0.64) return 'taiga';
-  if (val < 0.68 && val2 < 0.3) return 'swamp';
-  if (val < 0.72 && val2 > 0.7) return 'savanna';
-  if (val < 0.76 && val3 > 0.6) return 'mesa';
-  if (val < 0.80) return 'forest';
-  if (val < 0.84) return 'mountain';
-  if (val < 0.88) return 'plains';
-  if (val < 0.94) return 'jungle';
+  const val = (noise(wx * 0.003 + seed, wz * 0.003 + seed, 300) + 1) / 2;
+  const val2 = (noise(wx * 0.008 + seed, wz * 0.008 + seed, 400) + 1) / 2;
+  const val3 = (noise(wx * 0.002 + seed, wz * 0.002 + seed, 500) + 1) / 2;
+  if (val < 0.03) return 'coral_reef';
+  if (val < 0.06) return 'mushroom';
+  if (val < 0.09) return 'cherry_grove';
+  if (val < 0.12) return 'bamboo_forest';
+  if (val < 0.15) return 'volcanic';
+  if (val < 0.18) return 'soul_sand_valley';
+  if (val < 0.21) return 'end_highlands';
+  if (val < 0.24) return 'nether_wastes';
+  if (val < 0.28 && val2 > 0.7) return 'desert';
+  if (val < 0.31 && val2 > 0.8) return 'oasis';
+  if (val < 0.34 && val3 > 0.8) return 'ice_spikes';
+  if (val < 0.37) return 'snow';
+  if (val < 0.40) return 'ice';
+  if (val < 0.43) return 'taiga';
+  if (val < 0.46 && val2 < 0.4) return 'swamp';
+  if (val < 0.49 && val2 > 0.7) return 'savanna';
+  if (val < 0.52 && val3 > 0.7) return 'mesa';
+  if (val < 0.55) return 'forest';
+  if (val < 0.58) return 'mountain';
+  if (val < 0.70) return 'plains';
+  if (val < 0.80) return 'jungle';
   return 'dark_forest';
 }
 
-function rawTerrainHeight(wx, wz) {
+function terrainHeight(wx, wz) {
   let h = 24;
-  h += noise(wx/80+seed, wz/80+seed, 0)   * 16;
-  h += noise(wx/30+seed, wz/30+seed, 100) * 6;
-  h += noise(wx/12+seed, wz/12+seed, 200) * 2;
+  h += noise(wx/60+seed, wz/60+seed, 0)   * 20;
+  h += noise(wx/25+seed, wz/25+seed, 100) * 8;
+  h += noise(wx/10+seed, wz/10+seed, 200) * 3;
   const biome = getBiome(wx, wz);
   if (biome === 'desert') {
-    h = 28 + noise(wx/50+seed, wz/50+seed, 400) * 3;
+    h = 28 + noise(wx/40+seed, wz/40+seed, 400) * 4;
     h = Math.max(24, Math.min(35, h));
   } else if (biome === 'mountain') {
-    h += noise(wx/20+seed, wz/20+seed, 150) * 20;
-    h += Math.abs(noise(wx/6+seed, wz/6+seed, 250)) * 12;
-    h = Math.max(45, Math.min(63, h));
+    h += noise(wx/15+seed, wz/15+seed, 150) * 25;
+    h += Math.abs(noise(wx/5+seed, wz/5+seed, 250)) * 15;
+    h = Math.max(50, Math.min(WORLD_HEIGHT - 10, h));
   } else if (biome === 'ice') {
-    h = 26 + noise(wx/40+seed, wz/40+seed, 500) * 4;
-    h = Math.max(20, Math.min(30, h));
+    h = 25 + noise(wx/35+seed, wz/35+seed, 500) * 5;
+    h = Math.max(20, Math.min(32, h));
   } else if (biome === 'snow') {
-    h = 28 + noise(wx/35+seed, wz/35+seed, 550) * 5;
-    h = Math.max(22, Math.min(35, h));
+    h = 27 + noise(wx/30+seed, wz/30+seed, 550) * 6;
+    h = Math.max(22, Math.min(38, h));
   } else if (biome === 'swamp') {
-    h = 22 + noise(wx/25+seed, wz/25+seed, 600) * 3;
+    h = 21 + noise(wx/20+seed, wz/20+seed, 600) * 4;
     h = Math.max(18, Math.min(28, h));
   } else if (biome === 'savanna') {
-    h = 30 + noise(wx/30+seed, wz/30+seed, 650) * 6;
-    h = Math.max(26, Math.min(40, h));
+    h = 29 + noise(wx/25+seed, wz/25+seed, 650) * 7;
+    h = Math.max(26, Math.min(42, h));
   } else if (biome === 'coral_reef') {
-    h = 20 + noise(wx/20+seed, wz/20+seed, 700) * 4;
-    h = Math.max(18, Math.min(25, h));
+    h = 18 + noise(wx/18+seed, wz/18+seed, 700) * 5;
+    h = Math.max(15, Math.min(24, h));
   } else if (biome === 'mushroom') {
-    h = 24 + noise(wx/25+seed, wz/25+seed, 750) * 5;
-    h = Math.max(20, Math.min(30, h));
-  } else if (biome === 'cherry_grove') {
-    h = 26 + noise(wx/30+seed, wz/30+seed, 800) * 6;
-    h = Math.max(22, Math.min(35, h));
-  } else if (biome === 'bamboo_forest') {
-    h = 28 + noise(wx/25+seed, wz/25+seed, 850) * 5;
-    h = Math.max(24, Math.min(38, h));
-  } else if (biome === 'volcanic') {
-    h = 40 + Math.abs(noise(wx/15+seed, wz/15+seed, 900)) * 20;
-    h = Math.max(50, Math.min(63, h));
-  } else if (biome === 'soul_sand_valley') {
-    h = 32 + noise(wx/20+seed, wz/20+seed, 950) * 8;
-    h = Math.max(30, Math.min(45, h));
-  } else if (biome === 'end_highlands') {
-    h = 35 + noise(wx/18+seed, wz/18+seed, 1000) * 12;
-    h = Math.max(32, Math.min(55, h));
-  } else if (biome === 'nether_wastes') {
-    h = 30 + noise(wx/22+seed, wz/22+seed, 1050) * 10;
-    h = Math.max(28, Math.min(48, h));
-  } else if (biome === 'oasis') {
-    h = 26 + noise(wx/20+seed, wz/20+seed, 1100) * 3;
-    h = Math.max(24, Math.min(32, h));
-  } else if (biome === 'ice_spikes') {
-    h = 28 + noise(wx/25+seed, wz/25+seed, 1150) * 8;
-    h = Math.max(25, Math.min(40, h));
-  } else if (biome === 'taiga') {
-    h = 28 + noise(wx/25+seed, wz/25+seed, 1200) * 6;
-    h = Math.max(24, Math.min(40, h));
-  } else if (biome === 'mesa') {
-    h = 32 + noise(wx/20+seed, wz/20+seed, 1250) * 10;
-    h = Math.max(28, Math.min(55, h));
-  } else if (biome === 'plains') {
-    h = 24 + noise(wx/40+seed, wz/40+seed, 1300) * 4;
+    h = 23 + noise(wx/22+seed, wz/22+seed, 750) * 6;
     h = Math.max(20, Math.min(32, h));
+  } else if (biome === 'cherry_grove') {
+    h = 26 + noise(wx/28+seed, wz/28+seed, 800) * 7;
+    h = Math.max(22, Math.min(38, h));
+  } else if (biome === 'bamboo_forest') {
+    h = 27 + noise(wx/24+seed, wz/24+seed, 850) * 6;
+    h = Math.max(24, Math.min(40, h));
+  } else if (biome === 'volcanic') {
+    h = 45 + Math.abs(noise(wx/12+seed, wz/12+seed, 900)) * 25;
+    h = Math.max(55, Math.min(WORLD_HEIGHT - 8, h));
+  } else if (biome === 'soul_sand_valley') {
+    h = 32 + noise(wx/18+seed, wz/18+seed, 950) * 10;
+    h = Math.max(30, Math.min(48, h));
+  } else if (biome === 'end_highlands') {
+    h = 38 + noise(wx/16+seed, wz/16+seed, 1000) * 15;
+    h = Math.max(35, Math.min(60, h));
+  } else if (biome === 'nether_wastes') {
+    h = 35 + noise(wx/20+seed, wz/20+seed, 1050) * 12;
+    h = Math.max(32, Math.min(55, h));
+  } else if (biome === 'oasis') {
+    h = 26 + noise(wx/22+seed, wz/22+seed, 1100) * 4;
+    h = Math.max(24, Math.min(34, h));
+  } else if (biome === 'ice_spikes') {
+    h = 28 + noise(wx/20+seed, wz/20+seed, 1150) * 10;
+    h = Math.max(25, Math.min(45, h));
+  } else if (biome === 'taiga') {
+    h = 28 + noise(wx/25+seed, wz/25+seed, 1200) * 7;
+    h = Math.max(24, Math.min(42, h));
+  } else if (biome === 'mesa') {
+    h = 35 + noise(wx/18+seed, wz/18+seed, 1250) * 12;
+    h = Math.max(30, Math.min(58, h));
   } else if (biome === 'jungle') {
-    h = 24 + noise(wx/20+seed, wz/20+seed, 1350) * 8;
-    h = Math.max(20, Math.min(45, h));
+    h = 24 + noise(wx/20+seed, wz/20+seed, 1350) * 10;
+    h = Math.max(20, Math.min(48, h));
   } else if (biome === 'dark_forest') {
-    h = 26 + noise(wx/25+seed, wz/25+seed, 1400) * 6;
-    h = Math.max(22, Math.min(40, h));
+    h = 26 + noise(wx/22+seed, wz/22+seed, 1400) * 8;
+    h = Math.max(22, Math.min(44, h));
   } else {
-    h += noise(wx/25+seed, wz/25+seed, 300) * 6;
+    h += noise(wx/25+seed, wz/25+seed, 300) * 8;
     h = Math.max(20, Math.min(50, h));
   }
-  return Math.max(1, Math.min(63, Math.floor(h)));
-}
-
-function terrainHeight(wx, wz) {
-  const step = 16;
-  const x0 = Math.floor(wx / step) * step;
-  const z0 = Math.floor(wz / step) * step;
-  const x1 = x0 + step, z1 = z0 + step;
-  const h00 = rawTerrainHeight(x0, z0);
-  const h10 = rawTerrainHeight(x1, z0);
-  const h01 = rawTerrainHeight(x0, z1);
-  const h11 = rawTerrainHeight(x1, z1);
-  const fx = (wx - x0) / step, fz = (wz - z0) / step;
-  const h0 = h00 * (1 - fx) + h10 * fx;
-  const h1 = h01 * (1 - fx) + h11 * fx;
-  return Math.max(1, Math.min(63, Math.floor(h0 * (1 - fz) + h1 * fz)));
+  return Math.max(1, Math.min(WORLD_HEIGHT - 1, Math.floor(h)));
 }
 
 const heightCache = new Map();
@@ -201,7 +185,7 @@ function getCachedBiome(wx, wz) {
 }
 
 function getBlockType(x, y, z) {
-  if (y < 0 || y >= 64) return AIR;
+  if (y < 0 || y >= WORLD_HEIGHT) return AIR;
   const key = `${x},${y},${z}`;
   if (edits.has(key)) return edits.get(key);
   const h = getCachedHeight(x, z);
@@ -237,52 +221,313 @@ function getBlockType(x, y, z) {
   return STONE;
 }
 
-// ---------- Генерация деревьев и строений ----------
-function generateBigTree(editsMap, cx, cz, groundY) {
-  const trunkHeight = 5 + Math.floor(Math.random() * 3);
-  const startX = Math.floor(cx), startZ = Math.floor(cz), startY = groundY;
-  for (let h = 0; h < trunkHeight; h++) {
-    const y = startY + h;
-    if (y >= 64) break;
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dz = -1; dz <= 1; dz++) {
-        const x = startX + dx, z = startZ + dz;
-        if (dx === 0 && dz === 0) editsMap.set(`${x},${y},${z}`, WOOD);
-        else if (h < trunkHeight - 1) editsMap.set(`${x},${y},${z}`, WOOD);
-      }
-    }
-  }
-  const crownY = startY + trunkHeight - 1, radius = 3;
+// ==================== ГЕНЕРАЦИЯ ДЕРЕВЬЕВ (редко, 1-2%) ====================
+function generateOakTree(editsMap, cx, cz, groundY) {
+  const h = 5 + Math.floor(Math.random() * 2);
+  for (let y = 0; y < h; y++) editsMap.set(`${cx},${groundY + y},${cz}`, WOOD);
+  const leafRad = 2;
   for (let dy = -2; dy <= 2; dy++) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      for (let dz = -radius; dz <= radius; dz++) {
-        if (Math.sqrt(dx*dx + dz*dz + dy*dy) <= radius + 0.5) {
-          const x = startX + dx, z = startZ + dz, y = crownY + dy;
-          if (y >= 0 && y < 64) {
-            const cur = getBlockType(x, y, z);
-            if (cur === AIR || cur === LEAVES) editsMap.set(`${x},${y},${z}`, LEAVES);
-          }
+    for (let dx = -leafRad; dx <= leafRad; dx++) {
+      for (let dz = -leafRad; dz <= leafRad; dz++) {
+        const dist = Math.abs(dx) + Math.abs(dz) + Math.abs(dy);
+        if (dist <= leafRad + 0.5 && (dy + h) > 0) {
+          editsMap.set(`${cx + dx},${groundY + h - 1 + dy},${cz + dz}`, LEAVES);
         }
       }
     }
   }
+}
+
+function generatePineTree(editsMap, cx, cz, groundY) {
+  const h = 7 + Math.floor(Math.random() * 4);
+  for (let y = 0; y < h; y++) editsMap.set(`${cx},${groundY + y},${cz}`, WOOD);
+  for (let i = 0; i < 4; i++) {
+    const yOff = h - 2 - i * 2;
+    const rad = 2 - i;
+    if (rad < 1) continue;
+    for (let dx = -rad; dx <= rad; dx++) {
+      for (let dz = -rad; dz <= rad; dz++) {
+        if (Math.abs(dx) + Math.abs(dz) <= rad) {
+          editsMap.set(`${cx + dx},${groundY + yOff + i},${cz + dz}`, LEAVES);
+        }
+      }
+    }
+  }
+}
+
+function generatePalmTree(editsMap, cx, cz, groundY) {
+  const h = 4 + Math.floor(Math.random() * 3);
+  for (let y = 0; y < h; y++) editsMap.set(`${cx},${groundY + y},${cz}`, WOOD);
+  for (let dx = -2; dx <= 2; dx++) {
+    for (let dz = -2; dz <= 2; dz++) {
+      if (Math.abs(dx) + Math.abs(dz) <= 2) {
+        editsMap.set(`${cx + dx},${groundY + h - 1},${cz + dz}`, LEAVES);
+      }
+    }
+  }
+  editsMap.set(`${cx},${groundY + h},${cz}`, LEAVES);
+  editsMap.set(`${cx + 1},${groundY + h},${cz}`, LEAVES);
+  editsMap.set(`${cx - 1},${groundY + h},${cz}`, LEAVES);
+}
+
+function generateCherryTree(editsMap, cx, cz, groundY) {
+  const h = 4 + Math.floor(Math.random() * 3);
+  for (let y = 0; y < h; y++) editsMap.set(`${cx},${groundY + y},${cz}`, CHERRY_LOG);
+  for (let dx = -2; dx <= 2; dx++) {
+    for (let dz = -2; dz <= 2; dz++) {
+      if (Math.abs(dx) + Math.abs(dz) <= 2) {
+        editsMap.set(`${cx + dx},${groundY + h - 1},${cz + dz}`, CHERRY_LEAVES);
+      }
+    }
+  }
+}
+
+function generateSwampTree(editsMap, cx, cz, groundY) {
+  const h = 5 + Math.floor(Math.random() * 2);
+  for (let y = 0; y < h; y++) editsMap.set(`${cx},${groundY + y},${cz}`, WOOD);
   for (let dy = -1; dy <= 1; dy++) {
-    const y = crownY + dy;
-    if (y >= 0 && y < 64) editsMap.set(`${startX},${y},${startZ}`, WOOD);
+    for (let dx = -2; dx <= 2; dx++) {
+      for (let dz = -2; dz <= 2; dz++) {
+        if (Math.abs(dx) + Math.abs(dz) <= 2) {
+          editsMap.set(`${cx + dx},${groundY + h - 1 + dy},${cz + dz}`, LEAVES);
+        }
+      }
+    }
+  }
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let i = 1; i <= 2; i++) {
+        editsMap.set(`${cx + dx},${groundY + h - 1 - i},${cz + dz}`, LEAVES);
+      }
+    }
+  }
+}
+
+function generateGiantTree(editsMap, cx, cz, groundY) {
+  const h = 8 + Math.floor(Math.random() * 5);
+  for (let y = 0; y < h; y++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        if (dx === 0 && dz === 0) editsMap.set(`${cx},${groundY + y},${cz}`, WOOD);
+        else if (y < h - 2) editsMap.set(`${cx + dx},${groundY + y},${cz + dz}`, WOOD);
+      }
+    }
+  }
+  const rad = 4;
+  for (let dy = -3; dy <= 3; dy++) {
+    for (let dx = -rad; dx <= rad; dx++) {
+      for (let dz = -rad; dz <= rad; dz++) {
+        const dist = Math.sqrt(dx*dx + dz*dz + dy*dy);
+        if (dist <= rad) {
+          editsMap.set(`${cx + dx},${groundY + h - 2 + dy},${cz + dz}`, LEAVES);
+        }
+      }
+    }
+  }
+}
+
+function generateDeadTree(editsMap, cx, cz, groundY) {
+  const h = 3 + Math.floor(Math.random() * 3);
+  for (let y = 0; y < h; y++) editsMap.set(`${cx},${groundY + y},${cz}`, WOOD);
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dz = -1; dz <= 1; dz++) {
+      if (Math.random() < 0.3) {
+        editsMap.set(`${cx + dx},${groundY + h - 1},${cz + dz}`, WOOD);
+      }
+    }
+  }
+}
+
+function generateJungleTree(editsMap, cx, cz, groundY) {
+  const h = 6 + Math.floor(Math.random() * 5);
+  for (let y = 0; y < h; y++) editsMap.set(`${cx},${groundY + y},${cz}`, WOOD);
+  const rad = 3;
+  for (let dy = -2; dy <= 2; dy++) {
+    for (let dx = -rad; dx <= rad; dx++) {
+      for (let dz = -rad; dz <= rad; dz++) {
+        const dist = Math.sqrt(dx*dx + dz*dz + dy*dy);
+        if (dist <= rad) {
+          editsMap.set(`${cx + dx},${groundY + h - 2 + dy},${cz + dz}`, LEAVES);
+        }
+      }
+    }
+  }
+  for (let i = 1; i <= 3; i++) {
+    editsMap.set(`${cx + 1},${groundY + h - i},${cz}`, LEAVES);
+    editsMap.set(`${cx - 1},${groundY + h - i},${cz}`, LEAVES);
+  }
+}
+
+function generateMegaTaigaTree(editsMap, cx, cz, groundY) {
+  const h = 12 + Math.floor(Math.random() * 5);
+  const trunkW = 2;
+  for (let y = 0; y < h; y++) {
+    for (let dx = -trunkW; dx <= trunkW; dx++) {
+      for (let dz = -trunkW; dz <= trunkW; dz++) {
+        if (Math.abs(dx) + Math.abs(dz) <= trunkW) {
+          editsMap.set(`${cx + dx},${groundY + y},${cz + dz}`, WOOD);
+        }
+      }
+    }
+  }
+  for (let i = 0; i < 5; i++) {
+    const yOff = h - 3 - i * 2;
+    const rad = 3 - i;
+    for (let dx = -rad; dx <= rad; dx++) {
+      for (let dz = -rad; dz <= rad; dz++) {
+        if (Math.abs(dx) + Math.abs(dz) <= rad) {
+          editsMap.set(`${cx + dx},${groundY + yOff + i},${cz + dz}`, LEAVES);
+        }
+      }
+    }
+  }
+}
+
+// ==================== СТРУКТУРЫ (очень редкие, 0.5%) ====================
+function generatePortal(editsMap, cx, cz, groundY) {
+  const size = 7;
+  const startX = cx - Math.floor(size/2), startZ = cz - Math.floor(size/2);
+  for (let x = 0; x < size; x++) {
+    for (let z = 0; z < size; z++) {
+      if (x === 0 || x === size-1 || z === 0 || z === size-1) {
+        for (let y = 0; y < size; y++) {
+          if (y === size-1) continue;
+          editsMap.set(`${startX + x},${groundY + y},${startZ + z}`, OBSIDIAN);
+        }
+      }
+    }
+  }
+  for (let x = 1; x < size-1; x++) {
+    for (let z = 1; z < size-1; z++) {
+      for (let y = 1; y < size-1; y++) {
+        editsMap.set(`${startX + x},${groundY + y},${startZ + z}`, AIR);
+      }
+    }
+  }
+}
+
+function generateStoneCircle(editsMap, cx, cz, groundY) {
+  const radius = 4;
+  for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 8) {
+    const dx = Math.round(Math.cos(angle) * radius);
+    const dz = Math.round(Math.sin(angle) * radius);
+    editsMap.set(`${cx + dx},${groundY},${cz + dz}`, STONE);
+    editsMap.set(`${cx + dx},${groundY + 1},${cz + dz}`, MOSSY_STONE);
+  }
+}
+
+function generateDruidAltar(editsMap, cx, cz, groundY) {
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dz = -1; dz <= 1; dz++) {
+      editsMap.set(`${cx + dx},${groundY},${cz + dz}`, STONE);
+    }
+  }
+  editsMap.set(`${cx},${groundY + 1},${cz}`, GLOWSTONE);
+  editsMap.set(`${cx},${groundY + 2},${cz}`, AIR);
+}
+
+function generateSmallPyramid(editsMap, cx, cz, groundY) {
+  const stone = SANDSTONE;
+  for (let y = 0; y < 3; y++) {
+    const s = 3 - y;
+    for (let dx = -s; dx <= s; dx++) {
+      for (let dz = -s; dz <= s; dz++) {
+        if (Math.abs(dx) === s || Math.abs(dz) === s) {
+          editsMap.set(`${cx + dx},${groundY + y},${cz + dz}`, stone);
+        }
+      }
+    }
+  }
+}
+
+function generateRuins(editsMap, cx, cz, groundY) {
+  for (let dx = -2; dx <= 2; dx++) {
+    for (let dz = -2; dz <= 2; dz++) {
+      if (Math.random() < 0.6) {
+        editsMap.set(`${cx + dx},${groundY},${cz + dz}`, MOSSY_STONE);
+        if (Math.random() < 0.3) editsMap.set(`${cx + dx},${groundY + 1},${cz + dz}`, MOSSY_STONE);
+      }
+    }
+  }
+}
+
+function generateDolmen(editsMap, cx, cz, groundY) {
+  for (let i = -1; i <= 1; i++) {
+    editsMap.set(`${cx + i},${groundY},${cz}`, STONE);
+    editsMap.set(`${cx + i},${groundY + 1},${cz}`, STONE);
+    editsMap.set(`${cx + i},${groundY + 2},${cz}`, STONE);
+  }
+  for (let i = -1; i <= 1; i++) {
+    editsMap.set(`${cx + i},${groundY + 3},${cz - 1}`, STONE);
+    editsMap.set(`${cx + i},${groundY + 3},${cz + 1}`, STONE);
+  }
+  editsMap.set(`${cx},${groundY + 3},${cz}`, STONE);
+}
+
+function generateWell(editsMap, cx, cz, groundY) {
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dz = -1; dz <= 1; dz++) {
+      editsMap.set(`${cx + dx},${groundY},${cz + dz}`, STONE);
+    }
+  }
+  // Вода (в серверной логике вода – это отдельный блок, здесь используем AIR для простоты, но можно добавить WATER)
+  editsMap.set(`${cx},${groundY + 1},${cz}`, AIR);
+  editsMap.set(`${cx},${groundY + 2},${cz}`, AIR);
+}
+
+function generateTotemPole(editsMap, cx, cz, groundY) {
+  for (let y = 0; y < 4; y++) editsMap.set(`${cx},${groundY + y},${cz}`, WOOD);
+  editsMap.set(`${cx},${groundY + 4},${cz}`, PLANKS);
+  editsMap.set(`${cx},${groundY + 5},${cz}`, PLANKS);
+  editsMap.set(`${cx + 1},${groundY + 4},${cz}`, PLANKS);
+  editsMap.set(`${cx - 1},${groundY + 4},${cz}`, PLANKS);
+}
+
+function generateHangingGarden(editsMap, cx, cz, groundY) {
+  for (let y = 0; y < 3; y++) {
+    for (let dx = -2; dx <= 2; dx++) {
+      for (let dz = -2; dz <= 2; dz++) {
+        if (Math.abs(dx) + Math.abs(dz) <= 2) {
+          editsMap.set(`${cx + dx},${groundY + y},${cz + dz}`, DIRT);
+        }
+      }
+    }
+  }
+  for (let dx = -2; dx <= 2; dx++) {
+    for (let dz = -2; dz <= 2; dz++) {
+      if (Math.abs(dx) + Math.abs(dz) <= 2) {
+        editsMap.set(`${cx + dx},${groundY + 3},${cz + dz}`, GRASS);
+        if (Math.random() < 0.5) editsMap.set(`${cx + dx},${groundY + 4},${cz + dz}`, LEAVES);
+      }
+    }
+  }
+}
+
+function generateIceSpike(editsMap, cx, cz, groundY) {
+  const h = 5 + Math.floor(Math.random() * 6);
+  for (let y = 0; y < h; y++) {
+    const rad = Math.max(0, Math.floor((h - y) / 2));
+    for (let dx = -rad; dx <= rad; dx++) {
+      for (let dz = -rad; dz <= rad; dz++) {
+        if (Math.abs(dx) + Math.abs(dz) <= rad) {
+          editsMap.set(`${cx + dx},${groundY + y},${cz + dz}`, PACKED_ICE);
+        }
+      }
+    }
   }
 }
 
 function generateHouse(editsMap, cx, cz, groundY) {
   const wood = WOOD, planks = PLANKS;
-  const width = 10, height = 10, depth = 10;
+  const width = 8, height = 6, depth = 8;
   const startX = cx - width/2, startZ = cz - depth/2;
   for (let x = 0; x < width; x++) {
     for (let z = 0; z < depth; z++) {
       for (let y = 0; y < height; y++) {
         const wx = startX + x, wz = startZ + z, wy = groundY + y;
-        if (wy >= 64) continue;
+        if (wy >= WORLD_HEIGHT) continue;
         if (x === 0 || x === width-1 || z === 0 || z === depth-1 || y === 0 || y === height-1) {
-          if (z === 0 && x >= 4 && x <= 5 && y >= 1 && y <= 2) continue;
+          if (z === 0 && x >= 3 && x <= 4 && y >= 1 && y <= 2) continue;
           editsMap.set(`${wx},${wy},${wz}`, (y === 0) ? planks : wood);
         }
       }
@@ -299,7 +544,7 @@ function generatePyramid(editsMap, cx, cz, groundY) {
     for (let x = 0; x < s; x++) {
       for (let z = 0; z < s; z++) {
         const wx = startX + x + y/2, wz = startZ + z + y/2, wy = groundY + y;
-        if (wy >= 64) continue;
+        if (wy >= WORLD_HEIGHT) continue;
         if (x === 0 || x === s-1 || z === 0 || z === s-1 || y === size-1) {
           editsMap.set(`${wx},${wy},${wz}`, stone);
         }
@@ -319,7 +564,7 @@ function generateIgloo(editsMap, cx, cz, groundY) {
       const height = Math.floor(radius - dist);
       for (let y = 0; y <= height; y++) {
         const wy = groundY + y;
-        if (wy >= 64) continue;
+        if (wy >= WORLD_HEIGHT) continue;
         editsMap.set(`${wx},${wy},${wz}`, y === height ? snow : ice);
       }
     }
@@ -335,18 +580,11 @@ function generateJungleTemple(editsMap, cx, cz, groundY) {
     for (let z = 0; z < depth; z++) {
       for (let y = 0; y < height; y++) {
         const wx = startX + x, wz = startZ + z, wy = groundY + y;
-        if (wy >= 64) continue;
+        if (wy >= WORLD_HEIGHT) continue;
         if (x === 0 || x === width-1 || z === 0 || z === depth-1 || y === 0 || y === height-1) {
           if (z === 0 && x >= 3 && x <= 4 && y >= 1 && y <= 2) continue;
           editsMap.set(`${wx},${wy},${wz}`, stone);
         }
-      }
-    }
-  }
-  for (let x = 0; x <= width-1; x+=width-1) {
-    for (let z = 0; z <= depth-1; z+=depth-1) {
-      for (let y = 0; y < height; y++) {
-        editsMap.set(`${startX+x},${groundY+y},${startZ+z}`, stone);
       }
     }
   }
@@ -359,7 +597,7 @@ function generateWitchHut(editsMap, cx, cz, groundY) {
   for (let x = 0; x < width; x++) {
     for (let z = 0; z < depth; z++) {
       const wy = groundY;
-      if (wy >= 64) continue;
+      if (wy >= WORLD_HEIGHT) continue;
       if (Math.abs(x - width/2) < 2 && Math.abs(z - depth/2) < 2) {
         editsMap.set(`${startX+x},${wy},${startZ+z}`, planks);
       } else {
@@ -368,7 +606,7 @@ function generateWitchHut(editsMap, cx, cz, groundY) {
       if (x === 0 || x === width-1 || z === 0 || z === depth-1) {
         for (let y = 1; y < height; y++) {
           const wy2 = groundY + y;
-          if (wy2 >= 64) continue;
+          if (wy2 >= WORLD_HEIGHT) continue;
           editsMap.set(`${startX+x},${wy2},${startZ+z}`, wood);
         }
       }
@@ -384,7 +622,7 @@ function generateShipwreck(editsMap, cx, cz, groundY) {
     for (let w = 0; w < width; w++) {
       for (let h = 0; h < height; h++) {
         const wx = startX + l, wz = startZ + w, wy = groundY + h;
-        if (wy >= 64) continue;
+        if (wy >= WORLD_HEIGHT) continue;
         if (h === 0) editsMap.set(`${wx},${wy},${wz}`, planks);
         else if (l === 0 || l === length-1 || w === 0 || w === width-1) {
           editsMap.set(`${wx},${wy},${wz}`, wood);
@@ -397,9 +635,7 @@ function generateShipwreck(editsMap, cx, cz, groundY) {
 function generateGiantMushroom(editsMap, cx, cz, groundY) {
   const stem = MUSHROOM_STEM, cap = RED_MUSHROOM;
   const height = 6, capRadius = 4;
-  for (let y = 0; y < height; y++) {
-    editsMap.set(`${cx},${groundY + y},${cz}`, stem);
-  }
+  for (let y = 0; y < height; y++) editsMap.set(`${cx},${groundY + y},${cz}`, stem);
   for (let dx = -capRadius; dx <= capRadius; dx++) {
     for (let dz = -capRadius; dz <= capRadius; dz++) {
       const dist = Math.sqrt(dx*dx + dz*dz);
@@ -460,37 +696,54 @@ function generateDungeon(editsMap, cx, cz, groundY) {
   }
 }
 
-// ---------- Инициализация мира и правок ----------
+// ==================== ИНИЦИАЛИЗАЦИЯ МИРА ====================
 seed = Math.floor(Math.random() * 10000);
 const edits = new Map();
 const players = new Map();
 let nextId = 1;
 
-for (let cx = -20; cx <= 20; cx++) {
-  for (let cz = -20; cz <= 20; cz++) {
+// Предгенерация деревьев (шанс 2%) и структур (шанс 0.5%)
+for (let cx = -25; cx <= 25; cx++) {
+  for (let cz = -25; cz <= 25; cz++) {
     const centerX = cx * 16 + 8, centerZ = cz * 16 + 8;
     const biome = getCachedBiome(centerX, centerZ);
     const groundY = getCachedHeight(centerX, centerZ);
-    // Деревья (шанс 10%)
-    if ((biome === 'forest' || biome === 'swamp' || biome === 'savanna' || biome === 'taiga' || biome === 'jungle' || biome === 'dark_forest' || biome === 'cherry_grove') && Math.random() < 0.1 && groundY < 55 && groundY > 2) {
-      generateBigTree(edits, centerX, centerZ, groundY);
-    }
-    // Строения (шанс 3%)
-    if (Math.random() < 0.03) {
-      if (biome === 'desert' && Math.random() < 0.5) generatePyramid(edits, centerX, centerZ, groundY);
-      else if (biome === 'mountain' && Math.random() < 0.4) generateDungeon(edits, centerX, centerZ, groundY);
-      else if (biome === 'snow' && Math.random() < 0.4) generateIgloo(edits, centerX, centerZ, groundY);
-      else if (biome === 'jungle' && Math.random() < 0.4) generateJungleTemple(edits, centerX, centerZ, groundY);
-      else if (biome === 'swamp' && Math.random() < 0.4) generateWitchHut(edits, centerX, centerZ, groundY);
-      else if (biome === 'coral_reef') generateShipwreck(edits, centerX, centerZ, groundY);
-      else if (biome === 'mushroom') generateGiantMushroom(edits, centerX, centerZ, groundY);
-      else if (biome === 'volcanic') generateObsidianTower(edits, centerX, centerZ, groundY);
-      else if (biome === 'end_highlands') generateEndCity(edits, centerX, centerZ, groundY);
-      else generateHouse(edits, centerX, centerZ, groundY);
+    if (groundY > 2 && groundY < WORLD_HEIGHT - 8) {
+      if (Math.random() < 0.02) {
+        if (biome === 'taiga') generatePineTree(edits, centerX, centerZ, groundY);
+        else if (biome === 'jungle') generateJungleTree(edits, centerX, centerZ, groundY);
+        else if (biome === 'cherry_grove') generateCherryTree(edits, centerX, centerZ, groundY);
+        else if (biome === 'swamp') generateSwampTree(edits, centerX, centerZ, groundY);
+        else if (biome === 'dark_forest') generateGiantTree(edits, centerX, centerZ, groundY);
+        else if (biome === 'desert') generateDeadTree(edits, centerX, centerZ, groundY);
+        else if (biome === 'savanna') generatePalmTree(edits, centerX, centerZ, groundY);
+        else if (biome === 'forest' || biome === 'plains') generateOakTree(edits, centerX, centerZ, groundY);
+        else if (biome === 'mountain') generatePineTree(edits, centerX, centerZ, groundY);
+        else if (biome === 'bamboo_forest') generateBamboo(edits, centerX, centerZ, groundY);
+      }
+      if (Math.random() < 0.005) {
+        const r = Math.random();
+        if (biome === 'plains' && r < 0.15) generatePortal(edits, centerX, centerZ, groundY);
+        else if (biome === 'plains' && r < 0.3) generateStoneCircle(edits, centerX, centerZ, groundY);
+        else if (biome === 'forest' && r < 0.2) generateDruidAltar(edits, centerX, centerZ, groundY);
+        else if (biome === 'desert' && r < 0.25) generateSmallPyramid(edits, centerX, centerZ, groundY);
+        else if (biome === 'mountain' && r < 0.2) generateRuins(edits, centerX, centerZ, groundY);
+        else if (biome === 'ice' && r < 0.2) generateIceSpike(edits, centerX, centerZ, groundY);
+        else if (biome === 'snow' && r < 0.2) generateIgloo(edits, centerX, centerZ, groundY);
+        else if (biome === 'savanna' && r < 0.2) generateDolmen(edits, centerX, centerZ, groundY);
+        else if (biome === 'swamp' && r < 0.2) generateWell(edits, centerX, centerZ, groundY);
+        else if (biome === 'mesa' && r < 0.2) generateTotemPole(edits, centerX, centerZ, groundY);
+        else if (biome === 'jungle' && r < 0.2) generateHangingGarden(edits, centerX, centerZ, groundY);
+        else if (biome === 'coral_reef') generateShipwreck(edits, centerX, centerZ, groundY);
+        else if (biome === 'mushroom') generateGiantMushroom(edits, centerX, centerZ, groundY);
+        else if (biome === 'volcanic') generateObsidianTower(edits, centerX, centerZ, groundY);
+        else if (biome === 'end_highlands') generateEndCity(edits, centerX, centerZ, groundY);
+        else generateHouse(edits, centerX, centerZ, groundY);
+      }
     }
     // Кактусы в пустыне
-    if (biome === 'desert' && Math.random() < 0.03) {
-      const cactusHeight = 1 + Math.floor(Math.random() * 3);
+    if (biome === 'desert' && Math.random() < 0.02) {
+      const cactusHeight = 1 + Math.floor(Math.random() * 2);
       for (let h = 0; h < cactusHeight; h++) {
         edits.set(`${centerX},${groundY + h},${centerZ}`, CACTUS);
       }
@@ -498,7 +751,14 @@ for (let cx = -20; cx <= 20; cx++) {
   }
 }
 
-// ---------- WebSocket сервер и всё остальное ----------
+function generateBamboo(editsMap, cx, cz, groundY) {
+  const h = 3 + Math.floor(Math.random() * 4);
+  for (let y = 0; y < h; y++) {
+    editsMap.set(`${cx},${groundY + y},${cz}`, BAMBOO);
+  }
+}
+
+// ==================== WebSocket СЕРВЕР ====================
 const wss = new WebSocketServer({ server: httpServer });
 function send(ws, type, data) { if (ws.readyState === 1) ws.send(JSON.stringify({type,...data})); }
 function broadcast(type, data, exceptId = null) {
@@ -641,7 +901,6 @@ function performShadowStep(casterId) {
   }
 }
 
-// Пакетная отправка блоков
 let pendingBlocks = [];
 let pendingTimer = null;
 function queueBlockUpdate(x, y, z, t) {
@@ -657,7 +916,6 @@ function flushBlockBroadcasts() {
   else if (blocks.length > 1) broadcast('blocksUpdate', { blocks });
 }
 
-// Магический контекст
 const magicCtx = {
   getBlock: getBlockType,
   setBlock: queueBlockUpdate,
@@ -804,7 +1062,6 @@ const magicCtx = {
 
 const magic = createMagicEngine(magicCtx);
 
-// Основной тик сервера
 const TICK = 50;
 let lastManaSync = 0;
 setInterval(() => {
@@ -843,7 +1100,7 @@ setInterval(() => {
       if (q.burnAcc >= 1) { q.burnAcc -= 1; applyDamage(id, burn.power, { kb: 0 }); }
     }
 
-    // Урон от блоков (кактус, магма)
+    // Урон от кактуса и магмы
     const bx = Math.floor(q.x), by = Math.floor(q.y), bz = Math.floor(q.z);
     const blockUnder = getBlockType(bx, by, bz);
     if (blockUnder === CACTUS || blockUnder === MAGMA) {
@@ -857,7 +1114,6 @@ setInterval(() => {
     q.mana = Math.min(20, q.mana + dt);
   }
 
-  // Зоны
   for (const [zoneId, zone] of activeZones) {
     if (now > zone.until) { activeZones.delete(zoneId); broadcast('zoneEnd', { id: zoneId }); continue; }
     if (zone.effect === 'levitate_circle') {
@@ -886,7 +1142,6 @@ setInterval(() => {
   magic.tick(dt);
 }, TICK);
 
-// WebSocket соединения
 wss.on('connection', (ws) => {
   const id = nextId++;
   const nickname = randomNickname();
