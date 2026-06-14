@@ -1,6 +1,5 @@
 // magic.js – исправленная версия (луч работает)
 export const SPELL_ELEMENTS = ['fire','water','air','earth','beam','ice','shield','light','dark'];
-export const CONFLICTS = [];//[['fire','water'],['fire','ice'],['light','dark']];
 export const MANA_PER_ELEMENT = 1, CAST_COOLDOWN = 500;
 
 export function createMagicEngine(ctx) {
@@ -17,12 +16,10 @@ export function createMagicEngine(ctx) {
   };
 
   function validate(els) {
-    if (!Array.isArray(els) || els.length < 1 || els.length > 5) return false;
-    if (!els.every(e => SPELL_ELEMENTS.includes(e))) return false;
-    for (const [a, b] of CONFLICTS)
-      if (els.includes(a) && els.includes(b)) return false;
-    return true;
-  }
+  if (!Array.isArray(els) || els.length < 1 || els.length > 5) return false;
+  if (!els.every(e => SPELL_ELEMENTS.includes(e))) return false;
+  return true;
+}
 
   function explode(x, y, z, radius, dmg, ownerId, extraEffect = null) {
     radius = Math.min(radius, 6);

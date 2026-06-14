@@ -386,7 +386,6 @@ const ELEMENTS = [
   { id: 'light',  icon: '☀',  color: '#ffe9a0' },
   { id: 'dark',   icon: '🌑', color: '#603a80' },
 ];
-const CONFLICTS = [['fire', 'water'], ['fire', 'ice'], ['light', 'dark']];
 
 let combatMode = false;
 const spellQueue = [];
@@ -424,10 +423,6 @@ function refreshQueueUI() {
 function addElement(i) {
   if (spellQueue.length >= 5) return;
   const id = ELEMENTS[i].id;
-  for (const [a, b] of CONFLICTS) {
-    const other = id === a ? b : id === b ? a : null;
-    if (other && spellQueue.includes(other)) return;
-  }
   spellQueue.push(id);
   flashIcon(i);
   refreshQueueUI();
