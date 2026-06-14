@@ -1,6 +1,6 @@
 // magic.js – исправленная версия (луч работает)
 export const SPELL_ELEMENTS = ['fire','water','air','earth','beam','ice','shield','light','dark'];
-export const CONFLICTS = [['fire','water'],['fire','ice'],['light','dark']];
+export const CONFLICTS = [];//[['fire','water'],['fire','ice'],['light','dark']];
 export const MANA_PER_ELEMENT = 1, CAST_COOLDOWN = 500;
 
 export function createMagicEngine(ctx) {
