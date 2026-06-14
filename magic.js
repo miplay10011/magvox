@@ -304,8 +304,25 @@ export function createMagicEngine(ctx) {
         return;
       }
       if (n('fire') === 1 && n('dark') === 1 && n('air') === 1 && n('earth') === 1 && n('ice') === 1) {
-        ctx.dragonBreath(casterId, { x: ox, y: oy, z: oz }, { x: dx, y: dy, z: dz }, yaw);
-        return;
+        // Начальная позиция – перед игроком (на расстоянии 1 блок, на высоте глаз)
+        const startX = ox + dx * 1.5;
+        const startY = oy + 0.5;
+        const startZ = oz + dz * 1.5;
+        // Скорость в направлении взгляда (быстрая, как у файрбола)
+        const speed = 25;
+        const vx = dx * speed;
+        const vy = dy * speed + 5;  // небольшой подброс вверх для дуги
+        const vz = dz * speed;
+        
+        spawnProjectile(casterId, 'meteor', startX, startY, startZ, vx, vy, vz, {
+          gravity: true,
+          gravityStrength: 5,        // средняя гравитация (можно настроить)
+          explosive: true,
+          radius: 3 + n('earth'),
+          dmg: 14 + 2 * len,
+          scale: 2.5
+        });
+        return;     
       }
     }
 
@@ -325,7 +342,28 @@ export function createMagicEngine(ctx) {
       spawnProjectile(casterId, 'meteor', targetX, 50, targetZ, 0, -20, 0, {
         gravity: true,
         explosive: true,
-        radius: 3 + n('earth'),
+        radius: 5 + n('earth'),
+        dmg: 14 + 2 * len,
+        scale: 2.5
+      });
+      spawnProjectile(casterId, 'meteor', targetX, 150, targetZ+10, 0, -20, 0, {
+        gravity: true,
+        explosive: true,
+        radius: 5 + n('earth'),
+        dmg: 14 + 2 * len,
+        scale: 2.5
+      });
+      spawnProjectile(casterId, 'meteor', targetX-15, 100, targetZ-10, 0, -20, 0, {
+        gravity: true,
+        explosive: true,
+        radius: 5 + n('earth'),
+        dmg: 14 + 2 * len,
+        scale: 2.5
+      });
+      spawnProjectile(casterId, 'meteor', targetX-15, 130, targetZ-10, 0, -20, 0, {
+        gravity: true,
+        explosive: true,
+        radius: 5 + n('earth'),
         dmg: 14 + 2 * len,
         scale: 2.5
       });
