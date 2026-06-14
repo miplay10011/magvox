@@ -268,7 +268,7 @@ let yaw = 0, pitch = 0;
 
 // ========== Мир + менеджер чанков ==========
 let world = null;
-const FULL_RADIUS = 12;
+const FULL_RADIUS = 14;
 const dirtyChunks = new Set();
 
 // ========== LOD superchunks (4x4 chunks = 64x64 blocks) ==========
@@ -336,7 +336,7 @@ function chunkManagerTick() {
     }
   missing.sort((a, b) => a[2] - b[2]);
 
-  let genBudget = 2;
+  let genBudget = 4;
   for (const [cx, cz] of missing) {
     if (genBudget-- <= 0) break;
     const chunk = world.generateChunk(cx, cz);
