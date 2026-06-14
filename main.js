@@ -1,7 +1,13 @@
 import * as THREE from 'three';
 import { World, buildChunkMesh, buildLODChunkMesh, AIR, BLOCK_COLORS, CHUNK_SIZE,
          GRASS, DIRT, STONE, WOOD, LEAVES, PLANKS, SAND, GRAVEL, COAL_ORE, IRON_ORE,
-         ICE, SNOW_BLOCK, CACTUS } from './world.js';
+         ICE, SNOW_BLOCK, CACTUS,
+         BRICK, OBSIDIAN, GLOWSTONE, MOSSY_STONE, SANDSTONE,
+         NETHERRACK, END_STONE, PURPUR, PRISMARINE, SEA_LANTERN,
+         MAGMA, SOUL_SAND, HONEY, SLIME, BAMBOO,
+         CHERRY_LOG, CHERRY_LEAVES, MUSHROOM_STEM,
+         RED_MUSHROOM, BROWN_MUSHROOM, CORAL, SPONGE,
+         MYCELIUM, TERRACOTTA, PACKED_ICE } from './world.js';
 import { Network } from './network.js';
 import { createMagicEngine } from './magic.js';
 import { initParticles, spawnParticles, updateParticles } from './particles.js';
@@ -38,7 +44,6 @@ const SPELL_COMBINATIONS = [
   { name: "🔋 Электрический тотем / ⚡ Мгновенный тотем", elements: "🪨 + ⚡ + 💨", effect: "🔹 ЛКМ: тотем (ускорение + зарядка оружия) / 🔸 ПКМ: тотем сразу на месте (меньше длительность)" },
   { name: "☄️ Метеор / 🛡 Метеоритный щит", elements: "⚡ + 🔥 + 🪨", effect: "🔹 ЛКМ: падающий взрывной метеор / 🔸 ПКМ: щит 8 ед. (15с)" },
   { name: "🎯 Обычный снаряд / 🛡 Защита", elements: "любая комбинация (кроме 🛡/⚡)", effect: "🔹 ЛКМ: снаряд (урон от элементов) / 🔸 ПКМ: мгновенный щит или лечение" },
-
   { name: "💨 Паровая волна / 💚 Очищающий пар", elements: "🔥 + 💧", effect: "🔹 ЛКМ: отбрасывание + урон 4 / 🔸 ПКМ: снятие 🔥 Горение и ❄ Заморозки + 💚 Регенерация (5с)" },
   { name: "💧 Водяной разрез / 🕊 Воздушный карман", elements: "💧 + 💨", effect: "🔹 ЛКМ: снаряд с 🐌 Замедлением / 🔸 ПКМ: 🕊 Левитация + 💨 Ускорение (5с)" },
   { name: "🪨 Каменный шквал / 🧱 Земляная стена", elements: "🪨 + 💨", effect: "🔹 ЛКМ: снаряд + взрыв / 🔸 ПКМ: маленькая стена (3 блока)" },
@@ -48,23 +53,19 @@ const SPELL_COMBINATIONS = [
   { name: "💨 Воздушный толчок / 🛡 Щит ветра", elements: "🛡 + 💨", effect: "🔹 ЛКМ: отбрасывание / 🔸 ПКМ: 💨 Ускорение + 🛡 2 ед. (6с)" },
   { name: "☀ Световой клинок / ✨ Священный щит", elements: "🛡 + ☀", effect: "🔹 ЛКМ: снаряд (лечит кастера) / 🔸 ПКМ: снятие 🌑 Проклятия + 🛡 6 ед. (12с)" },
   { name: "🌑 Теневой плащ (мина)", elements: "🛡 + 🌑", effect: "🔹 ЛКМ: 💣 Мина / 🔸 ПКМ: 🌫️ Ослепление врагов + 💨 Ускорение себе" },
-
   { name: "☁️ Облако пара / 🛡 Паровой щит", elements: "🔥 + 💧 + 💨", effect: "🔹 ЛКМ: зона урона (3 HP) + лечение кастера (5) / 🔸 ПКМ: 🔥 Огнеупорность + ❄ Ледяная кожа" },
   { name: "🌋 Вулканическая бомба / 🪨 Магма-броня", elements: "🔥 + 🪨 + 🌑", effect: "🔹 ЛКМ: снаряд (радиус 3.5, урон 12, 🔥 Горение) / 🔸 ПКМ: 🪨 Каменная кожа + 🔥 Огненная аура" },
   { name: "❄ Ледяная стрела / 💚 Светлое исцеление", elements: "💧 + ❄ + ☀", effect: "🔹 ЛКМ: снаряд (❄ Заморозка 2с) / 🔸 ПКМ: снятие дебаффов + 💚 Лечение 8" },
   { name: "⚡ Электрический разряд / 🛡 Заземление", elements: "💨 + 🪨 + ⚡", effect: "🔹 ЛКМ: цепная молния (урон 10, перескок) / 🔸 ПКМ: 🛡 Барьер 3 ед." },
   { name: "🌑 Чёрная вода / 🌙 Лунная вода", elements: "🌑 + ☀ + 💧", effect: "🔹 ЛКМ: снаряд (🌑 Проклятие + 🌫️ Ослепление) / 🔸 ПКМ: снятие 🌑 + 💚 Лечение 12" },
-
   { name: "🌩️ Шторм / 🛡 Защита стихий", elements: "🔥 + 💧 + 💨 + 🪨", effect: "🔹 ЛКМ: массовый урон 8 + 🐌 Замедление + 🔥 Горение / 🔸 ПКМ: 🔥 Огнеупорность + ❄ Ледяная кожа + 🛡 4 ед." },
   { name: "✨ Карающий луч / 🛡 Абсолютная защита", elements: "☀ + 🌑 + ⚡ + 🛡", effect: "🔹 ЛКМ: сильный луч (урон 20) / 🔸 ПКМ: 🛡 12 ед. + 💚 Регенерация" },
   { name: "⚖️ Взрыв контраста / ⚖️ Баланс", elements: "🔥 + ❄ + 💨 + 🪨", effect: "🔹 ЛКМ: взрыв (урон 7, случайный 🔥/❄) / 🔸 ПКМ: снятие 🔥 и ❄ + 🛡 5 ед." },
-
   { name: "☄️ Метеоритный дождь / 🔥 Абсолютное пламя", elements: "🔥 + 🔥 + 🔥 + 🔥 + 🔥", effect: "🔹 ЛКМ: 5 метеоров с неба / 🔸 ПКМ: 🔥 Огненная аура (2 урона/с, радиус 4)" },
   { name: "🌊 Цунами / 💧 Аква-щит", elements: "💧 + 💧 + 💧 + 💧 + 💧", effect: "🔹 ЛКМ: отбрасывание + урон 12 / 🔸 ПКМ: 💚 Регенерация (3 HP/с, 20с)" },
   { name: "🌋 Землетрясение / 🧱 Непробиваемая стена", elements: "🪨 + 🪨 + 🪨 + 🪨 + 🪨", effect: "🔹 ЛКМ: 🌋 Громокаменный топот (радиус 6) / 🔸 ПКМ: большая стена (7 блоков)" },
   { name: "🌪️ Ураган / 🕊 Полёт", elements: "💨 + 💨 + 💨 + 💨 + 💨", effect: "🔹 ЛКМ: отбрасывание всех в радиусе 8 / 🔸 ПКМ: 🕊 Левитация + 💨 Ускорение ×2 (15с)" },
   { name: "❄ Глобальное замораживание / 🧊 Ледяная тюрьма", elements: "❄ + ❄ + ❄ + ❄ + ❄", effect: "🔹 ЛКМ: ❄ Заморозка всех в радиусе 8 (5с) / 🔸 ПКМ: стена вокруг цели" },
-
   { name: "🌿 Природный взрыв / 🐦‍🔥 Феникс", elements: "🔥 + 💧 + 🪨 + 💨 + ☀", effect: "🔹 ЛКМ: взрыв (радиус 5, урон 18) + 🌫️ Ослепление / 🔸 ПКМ: 🐦‍🔥 Феникс + 💚 Лечение 15" },
   { name: "🌑 Тёмная зима / ❄ Ледяной дождь", elements: "🌑 + ❄ + 💧 + 🪨 + ⚡", effect: "🔹 ЛКМ: 🌪️ Чёрный вихрь + ❄ Заморозка / 🔸 ПКМ: ⏳ Замедление времени (радиус 6, 12с) + 💚 Лечение 8" },
   { name: "☀ Небесный луч / ✨ Небесный щит", elements: "☀ + 🔥 + 💨 + ⚡ + 🛡", effect: "🔹 ЛКМ: мощный луч / 🔸 ПКМ: 🛡 10 ед. + 💚 Регенерация + 🔥 Огнеупорность" },
@@ -272,9 +273,9 @@ let world = null;
 const FULL_RADIUS = 8;
 const dirtyChunks = new Set();
 
-// ========== LOD superchunks (4x4 chunks = 64x64 blocks) ==========
-const LOD_SUPER_SCALE = 4;   // 1 superchunk = 4 ordinary chunks
-const LOD_SUPER_RADIUS = 12; // 12 superchunks = 768 blocks (~x4 from full)
+// ========== LOD superchunks ==========
+const LOD_SUPER_SCALE = 4;
+const LOD_SUPER_RADIUS = 12;
 const LOD_BUDGET = 8;
 const lodMeshes = new Map();
 
@@ -291,7 +292,6 @@ function startWorld(seed, edits = []) {
   for (const [key, t] of edits) world.edits.set(key, t);
   player.pos.set(0.5, world.terrainHeight(0, 0) + 1, 0.5);
   player.vel.set(0, 0, 0);
-  // очистить старые LOD
   for (const [key, mesh] of lodMeshes) {
     scene.remove(mesh); mesh.geometry.dispose();
   }
@@ -304,7 +304,6 @@ function chunkManagerTick() {
   const pcx = Math.floor(player.pos.x / CHUNK_SIZE);
   const pcz = Math.floor(player.pos.z / CHUNK_SIZE);
 
-  // 1. Отложенный ремеш (до 6 за тик)
   let dirtyBudget = 4;
   for (const chunk of dirtyChunks) {
     if (dirtyBudget-- <= 0) break;
@@ -312,7 +311,6 @@ function chunkManagerTick() {
     remeshChunk(chunk);
   }
 
-  // 2. Удаление далёких full чанков
   const wantFull = new Set();
   for (let dx = -FULL_RADIUS; dx <= FULL_RADIUS; dx++)
     for (let dz = -FULL_RADIUS; dz <= FULL_RADIUS; dz++)
@@ -327,7 +325,6 @@ function chunkManagerTick() {
     world.chunks.delete(key);
   }
 
-  // 3. Генерация full чанков (2 за тик)
   const missing = [];
   for (let dx = -FULL_RADIUS; dx <= FULL_RADIUS; dx++)
     for (let dz = -FULL_RADIUS; dz <= FULL_RADIUS; dz++) {
@@ -352,44 +349,31 @@ function chunkManagerTick() {
 
 setInterval(chunkManagerTick, 40);
 
-// ========== LOD manager (отдельный тик, реже) ==========
 function lodManagerTick() {
   if (!world) return;
   const pcx = Math.floor(player.pos.x / CHUNK_SIZE);
   const pcz = Math.floor(player.pos.z / CHUNK_SIZE);
-
   const superPlayerCx = Math.floor(pcx / LOD_SUPER_SCALE);
   const superPlayerCz = Math.floor(pcz / LOD_SUPER_SCALE);
-
   const wantLod = new Set();
 
   for (let dsx = -LOD_SUPER_RADIUS; dsx <= LOD_SUPER_RADIUS; dsx++) {
     for (let dsz = -LOD_SUPER_RADIUS; dsz <= LOD_SUPER_RADIUS; dsz++) {
       const scx = superPlayerCx + dsx;
       const scz = superPlayerCz + dsz;
-
-      // Which ordinary chunks does this superchunk cover?
       const minCx = scx * LOD_SUPER_SCALE;
       const maxCx = minCx + LOD_SUPER_SCALE - 1;
       const minCz = scz * LOD_SUPER_SCALE;
       const maxCz = minCz + LOD_SUPER_SCALE - 1;
-
-      // Skip if it overlaps the full-chunk area
       const fullMinX = pcx - FULL_RADIUS;
       const fullMaxX = pcx + FULL_RADIUS;
       const fullMinZ = pcz - FULL_RADIUS;
       const fullMaxZ = pcz + FULL_RADIUS;
-
-      if (maxCx >= fullMinX && minCx <= fullMaxX &&
-          maxCz >= fullMinZ && minCz <= fullMaxZ) {
-        continue; // overlaps full-quality area
-      }
-
+      if (maxCx >= fullMinX && minCx <= fullMaxX && maxCz >= fullMinZ && minCz <= fullMaxZ) continue;
       wantLod.add(`${scx},${scz}`);
     }
   }
 
-  // Remove far-away LOD meshes
   for (const [key, mesh] of lodMeshes) {
     if (wantLod.has(key)) continue;
     scene.remove(mesh);
@@ -397,7 +381,6 @@ function lodManagerTick() {
     lodMeshes.delete(key);
   }
 
-  // Create new LOD meshes (budget-limited per tick)
   let lodGen = LOD_BUDGET;
   for (const key of wantLod) {
     if (lodMeshes.has(key)) continue;
@@ -530,7 +513,7 @@ function addElement(i) {
 const PROJ_COLORS = {
   fire: 0xf4502a, water: 0x3a6cf4, air: 0xbfe8ff, earth: 0x8b5a2b,
   ice: 0x9ff5ff, dark: 0x603a80, light: 0xffe9a0, beam: 0xffd34d,
-  chaos: 0xaa44ff,dragon_fireball: 0xff6633,
+  chaos: 0xaa44ff, dragon_fireball: 0xff6633,
 };
 const projGeo = new THREE.SphereGeometry(0.25, 8, 6);
 const projectiles = new Map();
@@ -1429,16 +1412,16 @@ function updatePlayer(dt) {
   if (keys.has('KeyA')) wish.sub(right);
   if (wish.lengthSq() > 0) wish.normalize();
 
-  // ===== НОВОЕ: скольжение по льду =====
+  // Проверка льда под ногами для скольжения
   let isOnIce = false;
   const blockUnder = world.getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y - 0.1), Math.floor(player.pos.z));
-  if (blockUnder === ICE) isOnIce = true;
+  if (blockUnder === ICE || blockUnder === PACKED_ICE) isOnIce = true;
 
   let walkSpeed = WALK_SPEED;
   let decay = 0.03;
   if (isOnIce) {
-    walkSpeed *= 1.5;       // быстрее разгон
-    decay = 0.01;           // почти не тормозит
+    walkSpeed *= 1.5;
+    decay = 0.01;
   }
   walkSpeed *= speedMul;
 
@@ -1627,8 +1610,14 @@ function refreshUI() {
 }
 refreshUI();
 
-// ===== НОВОЕ: добавляем новые блоки в массив для переработки =====
-const ALL_BLOCK_TYPES = [GRASS, DIRT, STONE, WOOD, LEAVES, PLANKS, SAND, GRAVEL, COAL_ORE, IRON_ORE, ICE, SNOW_BLOCK, CACTUS];
+// Список всех блоков для переработки (включая новые)
+const ALL_BLOCK_TYPES = [
+  GRASS, DIRT, STONE, WOOD, LEAVES, PLANKS, SAND, GRAVEL, COAL_ORE, IRON_ORE,
+  ICE, SNOW_BLOCK, CACTUS, BRICK, OBSIDIAN, GLOWSTONE, MOSSY_STONE, SANDSTONE,
+  NETHERRACK, END_STONE, PURPUR, PRISMARINE, SEA_LANTERN, MAGMA, SOUL_SAND,
+  HONEY, SLIME, BAMBOO, CHERRY_LOG, CHERRY_LEAVES, MUSHROOM_STEM,
+  RED_MUSHROOM, BROWN_MUSHROOM, CORAL, SPONGE, MYCELIUM, TERRACOTTA, PACKED_ICE
+];
 
 function recycleItem() {
   const slot = inventory[36];
