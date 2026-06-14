@@ -64,6 +64,7 @@ export function createMagicEngine(ctx) {
       x, y, z, vx, vy, vz,
       ttl: 5,
       gravity: opts.gravity || false,
+      gravityStrength: opts.gravityStrength, // новая строка
       explosive: opts.explosive || false,
       radius: opts.radius || 0,
       dmg: opts.dmg || 0,
@@ -306,7 +307,7 @@ export function createMagicEngine(ctx) {
         return;
       }
       if (n('fire') === 1 && n('dark') === 1 && n('air') === 1 && n('earth') === 1 && n('ice') === 1) {
-        ctx.dragonBreath(casterId, { x: ox, z: oz }, { x: dx, z: dz }, yaw);
+        ctx.dragonBreath(casterId, { x: ox, y: oy, z: oz }, { x: dx, y: dy, z: dz }, yaw);
         return;
       }
     }
@@ -359,7 +360,7 @@ export function createMagicEngine(ctx) {
   function tick(dt) {
     for (const [id, pr] of projectiles) {
       pr.ttl -= dt;
-      if (pr.gravity) pr.vy -= 20 * dt;
+      if (pr.gravity) pr.vy -= (pr.gravityStrength || 20) * dt;
       pr.x += pr.vx * dt;
       pr.y += pr.vy * dt;
       pr.z += pr.vz * dt;
@@ -375,18 +376,19 @@ export function createMagicEngine(ctx) {
         projectiles.delete(id);
         ctx.emit('projEnd', { id, x: pr.x, y: pr.y, z: pr.z });
         if (pr.explosive) {
-          explode(pr.x, pr.y, pr.z, pr.radius, pr.dmg, pr.owner);
-        } else if (hitPlayer !== null) {
-          if (pr.fx?.n) applyElementEffects(hitPlayer, pr.fx.n, pr.owner);
-          ctx.applyDamage(hitPlayer, pr.dmg, {
-            ax: pr.x - pr.vx, az: pr.z - pr.vz,
-            kb: pr.fx?.kb ?? 6,
-            attackerId: pr.owner,
-            weapon: 'магии'
-          });
-        } else if (pr.onHit) {
-          pr.onHit(pr.x, pr.y, pr.z);
-        }
+        explode(pr.x, pr.y, pr.z, pr.radius, pr.dmg, pr.owner);
+        if (pr.onHit) pr.onHit(pr.x, pr.y, pr.z);
+      } else if (hitPlayer !== null) {
+        if (pr.fx?.n) applyElementEffects(hitPlayer, pr.fx.n, pr.owner);
+        ctx.applyDamage(hitPlayer, pr.dmg, {
+          ax: pr.x - pr.vx, az: pr.z - pr.vz,
+          kb: pr.fx?.kb ?? 6,
+          attackerId: pr.owner,
+          weapon: 'магии'
+        });
+      } else if (pr.onHit) {
+        pr.onHit(pr.x, pr.y, pr.z);
+      }
       }
     }
     for (const [id, m] of mines) {
