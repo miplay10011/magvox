@@ -276,16 +276,15 @@ let yaw = 0, pitch = 0;
 
 // ========== Мир + менеджер чанков (оптимизированный) ==========
 let world = null;
-const FULL_RADIUS = 6;          // было 9 — в 2.3 раза меньше full-чанков
+const FULL_RADIUS = 6;
 const LOD_RINGS = [
-  { level: 2, radius: 16 },     // было 20
-  { level: 3, radius: 30 },     // было 48
+  { level: 2, radius: 16 },
+  { level: 3, radius: 30 },
 ];
-const FULL_BUDGET = 2;          // макс. новых чанков за тик (было 8)
-const LOD_BUDGET  = 2;          // было 6
+const FULL_BUDGET = 2;
+const LOD_BUDGET  = 2;
 const lodMeshes = new Map();
 
-// Очередь чанков, которым нужен ремеш (соседи новых чанков)
 const dirtyChunks = new Set();
 let lastChunkCX = Infinity, lastChunkCZ = Infinity;
 
@@ -294,6 +293,14 @@ function remeshChunk(chunk) {
   if (chunk.mesh) { scene.remove(chunk.mesh); chunk.mesh.geometry.dispose(); }
   chunk.mesh = buildChunkMesh(world, chunk);
   scene.add(chunk.mesh);
+}
+
+function startWorld(seed, edits = []) {
+  world = new World(seed);
+  for (const [key, t] of edits) world.edits.set(key, t);
+  player.pos.set(0.5, world.terrainHeight(0, 0) + 1, 0.5);
+  player.vel.set(0, 0, 0);
+  chunkManagerTick();
 }
 
 function chunkManagerTick() {
@@ -321,7 +328,7 @@ function chunkManagerTick() {
         missing.push([cx, cz, dx * dx + dz * dz]);
     }
 
-  // Удаляем далёкие чанки (собираем ключи отдельно, чтобы не ломать итератор)
+  // Удаляем далёкие чанки
   const toDelete = [];
   for (const [key, c] of world.chunks)
     if (!wantFull.has(key)) toDelete.push([key, c]);
@@ -391,8 +398,8 @@ function chunkManagerTick() {
   lastChunkCZ = pcz;
 }
 
-// Чуть чаще, но работаем маленькими порциями — не лагает
 setInterval(chunkManagerTick, 100);
+
 
 // ========== Статы и эффекты ==========
 const stats = { hp: 50, armor: 0, mana: 20, maxMana: 20 };
