@@ -270,7 +270,7 @@ let yaw = 0, pitch = 0;
 
 // ========== Мир + менеджер чанков ==========
 let world = null;
-const FULL_RADIUS = 8;
+const FULL_RADIUS = 12;
 const dirtyChunks = new Set();
 
 // ========== LOD superchunks ==========
@@ -353,34 +353,48 @@ function lodManagerTick() {
   if (!world) return;
   const pcx = Math.floor(player.pos.x / CHUNK_SIZE);
   const pcz = Math.floor(player.pos.z / CHUNK_SIZE);
+
   const superPlayerCx = Math.floor(pcx / LOD_SUPER_SCALE);
   const superPlayerCz = Math.floor(pcz / LOD_SUPER_SCALE);
+
   const wantLod = new Set();
+
+  // Зона полных чанков
+  const fullMinX = pcx - FULL_RADIUS;
+  const fullMaxX = pcx + FULL_RADIUS;
+  const fullMinZ = pcz - FULL_RADIUS;
+  const fullMaxZ = pcz + FULL_RADIUS;
 
   for (let dsx = -LOD_SUPER_RADIUS; dsx <= LOD_SUPER_RADIUS; dsx++) {
     for (let dsz = -LOD_SUPER_RADIUS; dsz <= LOD_SUPER_RADIUS; dsz++) {
       const scx = superPlayerCx + dsx;
       const scz = superPlayerCz + dsz;
+
+      // Границы суперчанка в обычных чанках
       const minCx = scx * LOD_SUPER_SCALE;
       const maxCx = minCx + LOD_SUPER_SCALE - 1;
       const minCz = scz * LOD_SUPER_SCALE;
       const maxCz = minCz + LOD_SUPER_SCALE - 1;
-      const fullMinX = pcx - FULL_RADIUS;
-      const fullMaxX = pcx + FULL_RADIUS;
-      const fullMinZ = pcz - FULL_RADIUS;
-      const fullMaxZ = pcz + FULL_RADIUS;
-      if (maxCx >= fullMinX && minCx <= fullMaxX && maxCz >= fullMinZ && minCz <= fullMaxZ) continue;
+
+      // Если суперчанк полностью внутри зоны полных чанков — не рисуем LOD
+      const isInside = (minCx >= fullMinX && maxCx <= fullMaxX && minCz >= fullMinZ && maxCz <= fullMaxZ);
+      if (isInside) continue;
+
+      // Иначе — рисуем LOD (даже если частично пересекается)
       wantLod.add(`${scx},${scz}`);
     }
   }
 
+  // Удалить дальние LOD
   for (const [key, mesh] of lodMeshes) {
-    if (wantLod.has(key)) continue;
-    scene.remove(mesh);
-    mesh.geometry.dispose();
-    lodMeshes.delete(key);
+    if (!wantLod.has(key)) {
+      scene.remove(mesh);
+      mesh.geometry.dispose();
+      lodMeshes.delete(key);
+    }
   }
 
+  // Создать новые LOD (с бюджетом)
   let lodGen = LOD_BUDGET;
   for (const key of wantLod) {
     if (lodMeshes.has(key)) continue;
