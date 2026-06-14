@@ -544,72 +544,58 @@ const magicCtx = {
       broadcast('shacklesFx', { targetId });
     }
   },
+
   dragonBreath: (casterId, origin, dir, yaw) => {
-  // origin должен содержать x, y, z (y – высота глаз)
-  const forward = { x: Math.sin(yaw), z: Math.cos(yaw) };
-  const len = Math.hypot(forward.x, forward.z) || 1;
-  const dx = forward.x / len;
-  const dz = forward.z / len;
-  const right = { x: -dz, z: dx }; // перпендикуляр
+    const forward = { x: Math.sin(yaw), z: Math.cos(yaw) };
+    const len = Math.hypot(forward.x, forward.z) || 1;
+    const dx = forward.x / len;
+    const dz = forward.z / len;
+    const right = { x: -dz, z: dx };
+    const speed = 22;
+    const gravity = 8;
+    const baseDamage = 14;
+    const sideDamage = 8;
+    const baseRadius = 3.5;
+    const sideRadius = 2.2;
 
-  const speed = 22;
-  const gravity = 8;        // маленькая гравитация (в magic.js нужно будет поддержать)
-  const baseDamage = 14;
-  const sideDamage = 8;
-  const baseRadius = 3.5;
-  const sideRadius = 2.2;
-
-  function spawn(offsetX, offsetZ, damage, radius, scale) {
-    const startX = origin.x + right.x * offsetX;
-    const startZ = origin.z + right.z * offsetX;
-    const startY = origin.y + 1.2;
-    const vx = dx * speed + right.x * offsetZ;
-    const vz = dz * speed + right.z * offsetZ;
-    const vy = 0; // можно добавить -1..1
-
-    const id = nextProj++;
-    const proj = {
-      id, owner: casterId, kind: 'dragon_fireball',
-      x: startX, y: startY, z: startZ,
-      vx, vy, vz,
-      ttl: 6,
-      gravity: true,
-      gravityStrength: gravity, // если magic.js поддерживает
-      explosive: true,
-      radius: radius,
-      dmg: damage,
-      scale: scale,
-      onHit: (x, y, z) => {
-        const rad = radius * 1.8;
-        for (const [pid, p] of players) {
-          if (pid === casterId) continue;
-          const d2 = (p.x - x)**2 + (p.y + 0.9 - y)**2 + (p.z - z)**2;
-          if (d2 < rad * rad) {
-            if (!p.effects.has('burning'))
-              p.effects.set('burning', { until: Date.now() + 4000, power: 1 });
-            if (!p.effects.has('freeze'))
-              p.effects.set('freeze', { until: Date.now() + 2000, power: 1 });
-            if (!p.effects.has('weakness'))
-              p.effects.set('weakness', { until: Date.now() + 5000, power: 0.7 });
-            syncEffects(p);
+    const spawn = (offsetX, offsetZ, damage, radius, scale) => {
+      const startX = origin.x + right.x * offsetX;
+      const startZ = origin.z + right.z * offsetX;
+      const startY = origin.y + 1.2;
+      const vx = dx * speed + right.x * offsetZ;
+      const vz = dz * speed + right.z * offsetZ;
+      const vy = 0;
+      ctx.spawnProjectile(casterId, 'dragon_fireball', startX, startY, startZ, vx, vy, vz, {
+        gravity: true,
+        gravityStrength: gravity,
+        explosive: true,
+        radius: radius,
+        dmg: damage,
+        scale: scale,
+        onHit: (x, y, z) => {
+          const rad = radius * 1.8;
+          for (const [pid, p] of players) {
+            if (pid === casterId) continue;
+            const d2 = (p.x - x) ** 2 + (p.y + 0.9 - y) ** 2 + (p.z - z) ** 2;
+            if (d2 < rad * rad) {
+              if (!p.effects.has('burning'))
+                p.effects.set('burning', { until: Date.now() + 4000, power: 1 });
+              if (!p.effects.has('freeze'))
+                p.effects.set('freeze', { until: Date.now() + 2000, power: 1 });
+              if (!p.effects.has('weakness'))
+                p.effects.set('weakness', { until: Date.now() + 5000, power: 0.7 });
+              syncEffects(p);
+            }
           }
         }
-      }
+      });
     };
-    projectiles.set(id, proj);
-    ctx.emit('projSpawn', {
-      id, kind: proj.kind,
-      x: proj.x, y: proj.y, z: proj.z,
-      vx: proj.vx, vy: proj.vy, vz: proj.vz,
-      gravity: proj.gravity,
-      scale: proj.scale
-    });
-  }
 
-  spawn(0, 0, baseDamage, baseRadius, 1.2);   // центральный
-  spawn(1.2, 1.5, sideDamage, sideRadius, 0.8); // левый
-  spawn(-1.2, 1.5, sideDamage, sideRadius, 0.8); // правый
-};
+    spawn(0, 0, baseDamage, baseRadius, 1.2);
+    spawn(1.2, 1.5, sideDamage, sideRadius, 0.8);
+    spawn(-1.2, 1.5, sideDamage, sideRadius, 0.8);
+  },
+};  // <-- ЗАКРЫТИЕ ОБЪЕКТА magicCtx
 
 const magic = createMagicEngine(magicCtx);
 
