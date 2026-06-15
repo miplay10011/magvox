@@ -2,30 +2,35 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Voxel Game</title>
   <style>
-    body { margin: 0; overflow: hidden; }
+    body { margin: 0; overflow: hidden; touch-action: none; }
     #hud {
       position: absolute; top: 10px; left: 10px;
       color: white; font-family: monospace; font-size: 13px;
       background: rgba(0,0,0,0.5); padding: 8px;
       user-select: none; pointer-events: none;
+      z-index: 10;
     }
     #status {
       position: absolute; top: 10px; right: 10px;
       color: white; font-family: monospace; font-size: 14px;
       background: rgba(0,0,0,0.5); padding: 8px; pointer-events: none;
+      z-index: 10;
     }
     #crosshair {
       position: absolute; top: 50%; left: 50%;
       transform: translate(-50%, -50%);
       color: white; font-size: 22px; font-family: monospace;
       text-shadow: 0 0 3px black; pointer-events: none;
+      z-index: 10;
     }
     #hotbar {
       position: absolute; bottom: 12px; left: 50%;
       transform: translateX(-50%);
       display: flex; gap: 4px; pointer-events: none;
+      z-index: 10;
     }
     .slot {
       width: 48px; height: 48px; position: relative;
@@ -40,13 +45,13 @@
     #inventory {
       position: absolute; inset: 0; background: rgba(0,0,0,0.5);
       display: none; align-items: center; justify-content: center;
+      z-index: 100;
     }
     #inventory.open { display: flex; }
     #inv-panel { background: #c6c6c6; padding: 14px; border: 3px solid #555; border-radius: 4px; }
     #inv-panel .inv-grid { display: grid; grid-template-columns: repeat(9, 48px); gap: 4px; margin-bottom: 8px; }
     #inv-panel .slot { pointer-events: auto; cursor: pointer; background: #8b8b8b; }
     #inv-panel .slot:hover { background: #a8a8a8; }
-    /* Специальный слот переработки */
     .recycle-slot {
       background: #2a6f8f !important;
       border: 2px solid #00aaff !important;
@@ -76,6 +81,7 @@
     #stats {
       position: absolute; bottom: 68px; left: 50%;
       transform: translateX(-50%); width: 464px; pointer-events: none;
+      z-index: 10;
     }
     #hearts { font: 18px monospace; text-shadow: 1px 1px 0 black; letter-spacing: 2px; }
     #mana-bar {
@@ -86,10 +92,12 @@
     #damage-flash {
       position: absolute; inset: 0; background: rgba(255,0,0,0.35);
       opacity: 0; pointer-events: none; transition: opacity 0.4s;
+      z-index: 90;
     }
     #magic-ring {
       position: absolute; top: 50%; left: 50%; width: 0; height: 0;
       display: none; pointer-events: none;
+      z-index: 10;
     }
     #magic-ring.combat { display: block; }
     .element-icon {
@@ -105,6 +113,7 @@
     #spell-queue {
       position: absolute; top: calc(50% + 95px); left: 50%; transform: translateX(-50%);
       display: flex; gap: 6px; pointer-events: none;
+      z-index: 10;
     }
     .queued {
       width: 26px; height: 26px; border-radius: 50%; font-size: 14px;
@@ -113,6 +122,7 @@
     #effects-hud {
       position: absolute; left: 10px; top: 45%; color: #fff;
       font: 13px monospace; text-shadow: 1px 1px 0 #000; pointer-events: none;
+      z-index: 10;
     }
     #coord-display {
       position: absolute; bottom: 10px; left: 10px;
@@ -129,6 +139,82 @@
     #chat-input {
       width: 100%; padding: 5px; box-sizing: border-box;
       background: rgba(255,255,255,0.2); color: white; border: none; outline: none;
+    }
+    
+    /* Мобильные элементы */
+    #mobile-controls {
+      display: none;
+      position: absolute; inset: 0;
+      pointer-events: none;
+      z-index: 200;
+    }
+    .mobile-btn {
+      pointer-events: auto;
+      position: absolute;
+      background: rgba(255,255,255,0.15);
+      border: 2px solid rgba(255,255,255,0.5);
+      border-radius: 12px;
+      color: white;
+      font-size: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      touch-action: none;
+      min-width: 50px;
+      min-height: 50px;
+      backdrop-filter: blur(4px);
+      text-shadow: 0 0 4px black;
+    }
+    #joy-area {
+      position: absolute;
+      bottom: 80px; left: 20px;
+      width: 120px; height: 120px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 50%;
+      pointer-events: auto;
+      touch-action: none;
+    }
+    #joy-stick {
+      position: absolute;
+      width: 50px; height: 50px;
+      background: rgba(255,255,255,0.4);
+      border-radius: 50%;
+      left: 35px; top: 35px;
+      transition: left 0.05s, top 0.05s;
+    }
+    #btn-jump { bottom: 100px; right: 20px; }
+    #btn-fly { bottom: 160px; right: 20px; }
+    #btn-inventory { top: 20px; right: 20px; }
+    #btn-book { top: 80px; right: 20px; }
+    #btn-chat { top: 140px; right: 20px; }
+    #btn-combat { top: 20px; left: 20px; }
+    #btn-break { bottom: 20px; left: 50%; transform: translateX(-50%); }
+    #btn-place { bottom: 70px; left: 50%; transform: translateX(-50%); }
+    #elements-row {
+      position: absolute; top: 50%; right: 10px;
+      display: flex; flex-direction: column; gap: 6px;
+      pointer-events: auto;
+    }
+    .element-btn {
+      width: 44px; height: 44px; border-radius: 50%;
+      background: rgba(255,255,255,0.2);
+      border: 2px solid #fff;
+      font-size: 18px;
+      display: flex; align-items: center; justify-content: center;
+      color: white;
+    }
+    @media (max-width: 1024px), (pointer: coarse) {
+      #mobile-controls { display: block; }
+      #hud { font-size: 10px; top: 5px; left: 5px; }
+      #status { font-size: 10px; top: 5px; right: 5px; }
+      .slot { width: 36px; height: 36px; }
+      #stats { bottom: 100px; width: 340px; }
+      #hearts { font-size: 14px; }
+      #mana-bar { height: 6px; }
+      #crosshair { font-size: 18px; }
+      #chat-container { width: 200px; }
+      #chat-messages { height: 120px; }
     }
   </style>
   <script type="importmap">
@@ -155,7 +241,6 @@
   <div id="hotbar"></div>
   <div id="inventory">
     <div id="inv-panel">
-      <!-- Новый ряд: синий слот и кнопка переработки -->
       <div id="inv-craft-row">
         <div id="recycle-slot" class="slot recycle-slot" data-index="36"></div>
         <div id="recycle-button" class="recycle-button" title="Переработать блок">♻️</div>
@@ -171,6 +256,23 @@
     <div id="chat-messages"></div>
     <input type="text" id="chat-input" placeholder="Чат...">
   </div>
+
+  <!-- Мобильное управление -->
+  <div id="mobile-controls">
+    <div id="joy-area">
+      <div id="joy-stick"></div>
+    </div>
+    <div class="mobile-btn" id="btn-jump">🦘</div>
+    <div class="mobile-btn" id="btn-fly">🕊️</div>
+    <div class="mobile-btn" id="btn-inventory">🎒</div>
+    <div class="mobile-btn" id="btn-book">📖</div>
+    <div class="mobile-btn" id="btn-chat">💬</div>
+    <div class="mobile-btn" id="btn-combat">⚔️</div>
+    <div class="mobile-btn" id="btn-break">⛏️</div>
+    <div class="mobile-btn" id="btn-place">🧱</div>
+    <div id="elements-row"></div>
+  </div>
+
   <script type="module" src="main.js"></script>
 </body>
 </html>

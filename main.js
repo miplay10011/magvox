@@ -14,6 +14,7 @@ import { initParticles, spawnParticles, updateParticles } from './particles.js';
 
 // ========== Книга комбинаций (данные) ==========
 const SPELL_COMBINATIONS = [
+  // (полный список заклинаний, как было)
   { name: "🚀 Прыгучесть / 💨 Воздушный толчок", elements: "💨 + 💨 + 🪨", effect: "🔸 ПКМ: +50% высоты прыжка (75с) / 🔹 ЛКМ: отбрасывает врагов" },
   { name: "💚 Регенерация / 💧 Водный снаряд", elements: "💧 + ☀ + ☀", effect: "🔸 ПКМ: восстановление 1 HP/с (50с) / 🔹 ЛКМ: водяной шар (урон 6)" },
   { name: "🔥 Огнеупорность / 🔥 Огненный шар", elements: "🔥 + 🪨 + 🛡", effect: "🔸 ПКМ: сопротивление огню 50% (100с) / 🔹 ЛКМ: огненный шар (урон 10, взрыв)" },
@@ -167,7 +168,7 @@ function toggleSettings(open) {
         keys.clear();
         if (spellBookOpen) closeSpellBook();
     } else {
-        if (!invOpen && document.pointerLockElement !== renderer.domElement && !chatFocused) {
+        if (!invOpen && document.pointerLockElement !== renderer.domElement && !chatFocused && !isMobile) {
             renderer.domElement.requestPointerLock();
         }
     }
@@ -249,7 +250,7 @@ function closeSpellBook() {
   if (!spellBookOpen) return;
   spellBookOpen = false;
   if (spellBookElement) spellBookElement.style.display = 'none';
-  if (!invOpen && !settingsOpen && !chatFocused) {
+  if (!invOpen && !settingsOpen && !chatFocused && !isMobile) {
     renderer.domElement.requestPointerLock();
   }
 }
@@ -359,7 +360,6 @@ function lodManagerTick() {
 
   const wantLod = new Set();
 
-  // Зона полных чанков
   const fullMinX = pcx - FULL_RADIUS;
   const fullMaxX = pcx + FULL_RADIUS;
   const fullMinZ = pcz - FULL_RADIUS;
@@ -370,22 +370,18 @@ function lodManagerTick() {
       const scx = superPlayerCx + dsx;
       const scz = superPlayerCz + dsz;
 
-      // Границы суперчанка в обычных чанках
       const minCx = scx * LOD_SUPER_SCALE;
       const maxCx = minCx + LOD_SUPER_SCALE - 1;
       const minCz = scz * LOD_SUPER_SCALE;
       const maxCz = minCz + LOD_SUPER_SCALE - 1;
 
-      // Если суперчанк полностью внутри зоны полных чанков — не рисуем LOD
       const isInside = (minCx >= fullMinX && maxCx <= fullMaxX && minCz >= fullMinZ && maxCz <= fullMaxZ);
       if (isInside) continue;
 
-      // Иначе — рисуем LOD (даже если частично пересекается)
       wantLod.add(`${scx},${scz}`);
     }
   }
 
-  // Удалить дальние LOD
   for (const [key, mesh] of lodMeshes) {
     if (!wantLod.has(key)) {
       scene.remove(mesh);
@@ -394,7 +390,6 @@ function lodManagerTick() {
     }
   }
 
-  // Создать новые LOD (с бюджетом)
   let lodGen = LOD_BUDGET;
   for (const key of wantLod) {
     if (lodMeshes.has(key)) continue;
@@ -1238,9 +1233,199 @@ function syncPosition(now) {
   });
 }
 
-// ========== Управление ==========
+// ========== Мобильное управление ==========
+const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+const mobileKeys = {};
+function isKeyDown(code) {
+  return keys.has(code) || !!mobileKeys[code];
+}
+
+let joyActive = false;
+let joyId = null;
+let joyBase = { x: 0, y: 0 };
+let joyPos = { x: 0, y: 0 };
+const joyArea = document.getElementById('joy-area');
+const joyStick = document.getElementById('joy-stick');
+
+function handleJoyStart(e) {
+  e.preventDefault();
+  const touch = e.changedTouches[0];
+  joyActive = true;
+  joyId = touch.identifier;
+  const rect = joyArea.getBoundingClientRect();
+  joyBase.x = rect.left + rect.width / 2;
+  joyBase.y = rect.top + rect.height / 2;
+  updateJoyPos(touch.clientX, touch.clientY);
+}
+function handleJoyMove(e) {
+  e.preventDefault();
+  if (!joyActive) return;
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    const t = e.changedTouches[i];
+    if (t.identifier === joyId) {
+      updateJoyPos(t.clientX, t.clientY);
+      break;
+    }
+  }
+}
+function handleJoyEnd(e) {
+  e.preventDefault();
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    if (e.changedTouches[i].identifier === joyId) {
+      joyActive = false;
+      joyId = null;
+      updateJoyPos(joyBase.x, joyBase.y);
+      mobileKeys['KeyW'] = false;
+      mobileKeys['KeyS'] = false;
+      mobileKeys['KeyA'] = false;
+      mobileKeys['KeyD'] = false;
+      break;
+    }
+  }
+}
+function updateJoyPos(cx, cy) {
+  const maxR = 50;
+  let dx = cx - joyBase.x;
+  let dy = cy - joyBase.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist > maxR) {
+    dx = dx / dist * maxR;
+    dy = dy / dist * maxR;
+  }
+  joyPos.x = dx / maxR;
+  joyPos.y = dy / maxR;
+  joyStick.style.left = (35 + dx * 0.9) + 'px';
+  joyStick.style.top = (35 + dy * 0.9) + 'px';
+  
+  mobileKeys['KeyW'] = dy < -0.3;
+  mobileKeys['KeyS'] = dy > 0.3;
+  mobileKeys['KeyA'] = dx < -0.3;
+  mobileKeys['KeyD'] = dx > 0.3;
+}
+
+joyArea.addEventListener('touchstart', handleJoyStart, { passive: false });
+joyArea.addEventListener('touchmove', handleJoyMove, { passive: false });
+joyArea.addEventListener('touchend', handleJoyEnd);
+joyArea.addEventListener('touchcancel', handleJoyEnd);
+
+let camTouchId = null;
+let lastCamTouch = { x: 0, y: 0 };
+
+function onTouchStart(e) {
+  if (invOpen || settingsOpen || spellBookOpen) return;
+  for (const t of e.changedTouches) {
+    if (t.target === renderer.domElement || t.target === document.body) {
+      if (camTouchId === null) {
+        camTouchId = t.identifier;
+        lastCamTouch.x = t.clientX;
+        lastCamTouch.y = t.clientY;
+      }
+    }
+  }
+}
+function onTouchMove(e) {
+  if (camTouchId === null) return;
+  for (const t of e.changedTouches) {
+    if (t.identifier === camTouchId) {
+      const dx = t.clientX - lastCamTouch.x;
+      const dy = t.clientY - lastCamTouch.y;
+      yaw -= dx * SENS;
+      pitch -= dy * SENS;
+      const lim = Math.PI / 2 - 0.01;
+      pitch = Math.max(-lim, Math.min(lim, pitch));
+      lastCamTouch.x = t.clientX;
+      lastCamTouch.y = t.clientY;
+      break;
+    }
+  }
+}
+function onTouchEnd(e) {
+  for (const t of e.changedTouches) {
+    if (t.identifier === camTouchId) {
+      camTouchId = null;
+      break;
+    }
+  }
+}
+
+document.addEventListener('touchstart', onTouchStart, { passive: false });
+document.addEventListener('touchmove', onTouchMove, { passive: false });
+document.addEventListener('touchend', onTouchEnd);
+document.addEventListener('touchcancel', onTouchEnd);
+
+function bindMobileButton(id, action) {
+  const btn = document.getElementById(id);
+  if (!btn) return;
+  btn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    action();
+  });
+  btn.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    action();
+  });
+}
+
+bindMobileButton('btn-jump', () => { mobileKeys['Space'] = true; setTimeout(() => mobileKeys['Space'] = false, 100); });
+bindMobileButton('btn-fly', () => { player.flying = !player.flying; player.vel.set(0,0,0); addChatMessage('Система', player.flying ? 'Полёт вкл' : 'Полёт выкл'); });
+bindMobileButton('btn-inventory', () => toggleInventory());
+bindMobileButton('btn-book', () => openSpellBook());
+bindMobileButton('btn-chat', () => { chatInput.focus(); chatInput.value = ''; });
+bindMobileButton('btn-combat', () => { combatMode = !combatMode; spellQueue.length = 0; refreshQueueUI(); ringEl.classList.toggle('combat', combatMode); });
+bindMobileButton('btn-break', () => {
+  if (combatMode) {
+    const target = raycastPlayers(4.5);
+    if (target) { net.send('attack', { target: target.id }); }
+    else if (spellQueue.length) castSpell('left');
+  } else {
+    const hit = raycastBlock(5);
+    if (!hit) return;
+    const [x,y,z] = hit.block;
+    addItem(world.getBlock(x,y,z));
+    const dirty = world.setBlock(x,y,z,AIR);
+    dirty.forEach(c => c.dirty = true);
+    dirty.forEach(remeshChunk);
+    net.send('setBlock', {x,y,z,t:AIR});
+  }
+});
+bindMobileButton('btn-place', () => {
+  if (combatMode) {
+    if (spellQueue.length) castSpell('right');
+  } else {
+    const hit = raycastBlock(5);
+    if (!hit?.prev) return;
+    const slot = inventory[selectedSlot];
+    if (!slot) return;
+    const [x,y,z] = hit.prev;
+    if (intersectsPlayer(x,y,z)) return;
+    const dirty = world.setBlock(x,y,z,slot.type);
+    dirty.forEach(c => c.dirty = true);
+    dirty.forEach(remeshChunk);
+    net.send('setBlock', {x,y,z,t:slot.type});
+    if (--slot.count <= 0) inventory[selectedSlot] = null;
+    refreshUI();
+  }
+});
+
+const elementsRow = document.getElementById('elements-row');
+if (elementsRow && isMobile) {
+  ELEMENTS.forEach((el, i) => {
+    const btn = document.createElement('div');
+    btn.className = 'element-btn';
+    btn.textContent = el.icon;
+    btn.style.background = el.color + '44';
+    btn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (combatMode) addElement(i);
+      else { selectedSlot = i; refreshUI(); }
+    });
+    elementsRow.appendChild(btn);
+  });
+}
+
+// ========== Управление мышью/клавиатурой (десктоп) ==========
 renderer.domElement.addEventListener('click', () => {
-  if (!invOpen) renderer.domElement.requestPointerLock();
+  if (!invOpen && !isMobile) renderer.domElement.requestPointerLock();
 });
 document.addEventListener('mousemove', (e) => {
   if (document.pointerLockElement !== renderer.domElement) return;
@@ -1328,7 +1513,7 @@ document.addEventListener('wheel', (e) => {
   refreshUI();
 });
 
-// ========== Физика с разрешением застревания ==========
+// ========== Физика ==========
 function moveAxis(dt, axis) {
   player.pos[axis] += player.vel[axis] * dt;
   const half = PLAYER.width / 2, E = 1e-4;
@@ -1420,13 +1605,12 @@ function updatePlayer(dt) {
   const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
   const right   = new THREE.Vector3( Math.cos(yaw), 0, -Math.sin(yaw));
   const wish = new THREE.Vector3();
-  if (keys.has('KeyW')) wish.add(forward);
-  if (keys.has('KeyS')) wish.sub(forward);
-  if (keys.has('KeyD')) wish.add(right);
-  if (keys.has('KeyA')) wish.sub(right);
+  if (isKeyDown('KeyW')) wish.add(forward);
+  if (isKeyDown('KeyS')) wish.sub(forward);
+  if (isKeyDown('KeyD')) wish.add(right);
+  if (isKeyDown('KeyA')) wish.sub(right);
   if (wish.lengthSq() > 0) wish.normalize();
 
-  // Проверка льда под ногами для скольжения
   let isOnIce = false;
   const blockUnder = world.getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y - 0.1), Math.floor(player.pos.z));
   if (blockUnder === ICE || blockUnder === PACKED_ICE) isOnIce = true;
@@ -1440,8 +1624,8 @@ function updatePlayer(dt) {
   walkSpeed *= speedMul;
 
   if (player.flying) {
-    if (keys.has('Space'))     wish.y += 1;
-    if (keys.has('ShiftLeft')) wish.y -= 1;
+    if (isKeyDown('Space'))     wish.y += 1;
+    if (isKeyDown('ShiftLeft')) wish.y -= 1;
     player.pos.addScaledVector(wish, FLY_SPEED * speedMul * dt);
   } else {
     player.vel.x = wish.x * walkSpeed + player.knock.x;
@@ -1450,10 +1634,10 @@ function updatePlayer(dt) {
     player.knock.z *= Math.pow(decay, dt);
 
     if (effectActive('levitate')) {
-      player.vel.y = keys.has('Space') ? 4 : keys.has('ShiftLeft') ? -4 : 0;
+      player.vel.y = isKeyDown('Space') ? 4 : isKeyDown('ShiftLeft') ? -4 : 0;
     } else {
       player.vel.y -= GRAVITY * dt;
-      if (keys.has('Space') && player.onGround && speedMul > 0) player.vel.y = jumpPower;
+      if (isKeyDown('Space') && player.onGround && speedMul > 0) player.vel.y = jumpPower;
     }
     player.onGround = false;
     moveAxis(dt, 'y');
@@ -1463,7 +1647,7 @@ function updatePlayer(dt) {
 
   if (effectActive('weightless')) {
     if (!player.flying && !player.onGround && player.vel.y < 0) player.vel.y *= 0.98;
-    if (keys.has('Space') && !player.onGround && !player.doubleJumpUsed) {
+    if (isKeyDown('Space') && !player.onGround && !player.doubleJumpUsed) {
       player.vel.y = 6;
       player.doubleJumpUsed = true;
       spawnParticles(player.pos.x, player.pos.y, player.pos.z, 0x88ff88, 10, 1, 0.5);
@@ -1482,7 +1666,6 @@ function updatePlayer(dt) {
   camera.position.set(player.pos.x, player.pos.y + PLAYER.eye, player.pos.z);
 }
 
-// ========== Райкасты ==========
 function raycastBlock(maxDist = 5) {
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
@@ -1624,7 +1807,6 @@ function refreshUI() {
 }
 refreshUI();
 
-// Список всех блоков для переработки (включая новые)
 const ALL_BLOCK_TYPES = [
   GRASS, DIRT, STONE, WOOD, LEAVES, PLANKS, SAND, GRAVEL, COAL_ORE, IRON_ORE,
   ICE, SNOW_BLOCK, CACTUS, BRICK, OBSIDIAN, GLOWSTONE, MOSSY_STONE, SANDSTONE,
@@ -1665,16 +1847,16 @@ function toggleInventory() {
       for (let n = held.count; n > 0; n--) addItem(held.type);
       held = null;
     }
-    if (!settingsOpen) renderer.domElement.requestPointerLock();
+    if (!settingsOpen && !isMobile) renderer.domElement.requestPointerLock();
   }
   refreshUI();
 }
 invEl.addEventListener('contextmenu', (e) => e.preventDefault());
 
-// ========== Действия мыши ==========
 document.addEventListener('contextmenu', (e) => e.preventDefault());
 document.addEventListener('mousedown', (e) => {
   if (!world || document.pointerLockElement !== renderer.domElement) return;
+  if (isMobile) return;
 
   if (combatMode) {
     if (e.button === 0) {
