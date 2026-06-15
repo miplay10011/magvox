@@ -1459,21 +1459,6 @@ if (isMobile) {
     });
   }
 
-  // Обработчики для слотов инвентаря (перетаскивание)
-  function setupMobileSlotTouch(slotEl, index) {
-    if (!slotEl) return;
-    slotEl.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      clickSlot(index, 0); // левый клик
-    });
-  }
-  for (let i = 0; i < invSlots.length; i++) {
-    setupMobileSlotTouch(invSlots[i], i);
-  }
-  if (recycleSlotDiv) {
-    setupMobileSlotTouch(recycleSlotDiv, 36);
-  }
-
   // Кнопка закрытия инвентаря
   const closeInvBtn = document.getElementById('close-inv-btn');
   if (closeInvBtn) {
@@ -1908,6 +1893,23 @@ function recycleItem() {
 const recycleBtn = document.getElementById('recycle-button');
 if (recycleBtn) {
   recycleBtn.addEventListener('click', () => recycleItem());
+}
+
+// ========== ДОБАВЛЯЕМ МОБИЛЬНЫЕ ОБРАБОТЧИКИ СЛОТОВ ИНВЕНТАРЯ (после recycleBtn) ==========
+if (isMobile) {
+  // Обработчики для слотов инвентаря (перетаскивание)
+  for (let i = 0; i < invSlots.length; i++) {
+    invSlots[i].addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      clickSlot(i, 0);
+    });
+  }
+  if (recycleSlotDiv) {
+    recycleSlotDiv.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      clickSlot(36, 0);
+    });
+  }
 }
 
 function toggleInventory() {
