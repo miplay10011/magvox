@@ -470,7 +470,7 @@ function generateWell(editsMap, cx, cz, groundY) {
       editsMap.set(`${cx + dx},${groundY},${cz + dz}`, STONE);
     }
   }
-  // Вода (в серверной логике вода – это отдельный блок, здесь используем AIR для простоты, но можно добавить WATER)
+  // Вода (на сервере вода не определена, используем AIR для простоты)
   editsMap.set(`${cx},${groundY + 1},${cz}`, AIR);
   editsMap.set(`${cx},${groundY + 2},${cz}`, AIR);
 }
@@ -1153,9 +1153,20 @@ wss.on('connection', (ws) => {
   });
   console.log(`+ ${nickname} (id ${id}) · всего: ${players.size}`);
 
+  // ---------- СЖАТИЕ EDITS (Uint8Array) ----------
+  const editsArray = new Uint8Array(edits.size * 4);
+  let idx = 0;
+  for (const [key, t] of edits) {
+    const [x, y, z] = key.split(',').map(Number);
+    editsArray[idx++] = x;
+    editsArray[idx++] = y;
+    editsArray[idx++] = z;
+    editsArray[idx++] = t;
+  }
+
   send(ws, 'init', {
     id, nickname, seed,
-    edits: [...edits],
+    edits: editsArray,
     snapshot: magic.getSnapshot(),
     players: [...players].filter(([pid]) => pid !== id).map(([pid, q]) => ({
       id: pid, nickname: q.nickname, x: q.x, y: q.y, z: q.z, yaw: q.yaw

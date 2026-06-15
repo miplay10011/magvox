@@ -273,6 +273,9 @@ let world = null;
 const FULL_RADIUS = 12;
 const dirtyChunks = new Set();
 
+// ---------- ОПТИМИЗАЦИЯ: кеш последней позиции чанка ----------
+let lastChunkX = null, lastChunkZ = null;
+
 // ========== LOD superchunks ==========
 const LOD_SUPER_SCALE = 4;
 const LOD_SUPER_RADIUS = 12;
@@ -289,20 +292,36 @@ function remeshChunk(chunk) {
 
 function startWorld(seed, edits = []) {
   world = new World(seed);
-  for (const [key, t] of edits) world.edits.set(key, t);
+  // Распаковка сжатых edits (бинарный массив)
+  if (edits instanceof Uint8Array) {
+    for (let i = 0; i < edits.length; i += 4) {
+      const x = edits[i], y = edits[i+1], z = edits[i+2], t = edits[i+3];
+      world.edits.set(`${x},${y},${z}`, t);
+    }
+  } else {
+    for (const [key, t] of edits) world.edits.set(key, t);
+  }
   player.pos.set(0.5, world.terrainHeight(0, 0) + 1, 0.5);
   player.vel.set(0, 0, 0);
   for (const [key, mesh] of lodMeshes) {
     scene.remove(mesh); mesh.geometry.dispose();
   }
   lodMeshes.clear();
+  lastChunkX = null; lastChunkZ = null;
   chunkManagerTick();
 }
 
+// ---------- ОПТИМИЗАЦИЯ: обновление чанков только при смене чанка ----------
 function chunkManagerTick() {
   if (!world) return;
   const pcx = Math.floor(player.pos.x / CHUNK_SIZE);
   const pcz = Math.floor(player.pos.z / CHUNK_SIZE);
+  
+  const moved = (pcx !== lastChunkX || pcz !== lastChunkZ);
+  if (moved) {
+    lastChunkX = pcx;
+    lastChunkZ = pcz;
+  }
 
   let dirtyBudget = 4;
   for (const chunk of dirtyChunks) {
@@ -310,6 +329,8 @@ function chunkManagerTick() {
     dirtyChunks.delete(chunk);
     remeshChunk(chunk);
   }
+
+  if (!moved) return;
 
   const wantFull = new Set();
   for (let dx = -FULL_RADIUS; dx <= FULL_RADIUS; dx++)
@@ -359,7 +380,6 @@ function lodManagerTick() {
 
   const wantLod = new Set();
 
-  // Зона полных чанков
   const fullMinX = pcx - FULL_RADIUS;
   const fullMaxX = pcx + FULL_RADIUS;
   const fullMinZ = pcz - FULL_RADIUS;
@@ -370,22 +390,18 @@ function lodManagerTick() {
       const scx = superPlayerCx + dsx;
       const scz = superPlayerCz + dsz;
 
-      // Границы суперчанка в обычных чанках
       const minCx = scx * LOD_SUPER_SCALE;
       const maxCx = minCx + LOD_SUPER_SCALE - 1;
       const minCz = scz * LOD_SUPER_SCALE;
       const maxCz = minCz + LOD_SUPER_SCALE - 1;
 
-      // Если суперчанк полностью внутри зоны полных чанков — не рисуем LOD
       const isInside = (minCx >= fullMinX && maxCx <= fullMaxX && minCz >= fullMinZ && maxCz <= fullMaxZ);
       if (isInside) continue;
 
-      // Иначе — рисуем LOD (даже если частично пересекается)
       wantLod.add(`${scx},${scz}`);
     }
   }
 
-  // Удалить дальние LOD
   for (const [key, mesh] of lodMeshes) {
     if (!wantLod.has(key)) {
       scene.remove(mesh);
@@ -394,7 +410,6 @@ function lodManagerTick() {
     }
   }
 
-  // Создать новые LOD (с бюджетом)
   let lodGen = LOD_BUDGET;
   for (const key of wantLod) {
     if (lodMeshes.has(key)) continue;
@@ -1328,29 +1343,35 @@ document.addEventListener('wheel', (e) => {
   refreshUI();
 });
 
-// ========== Физика с разрешением застревания ==========
+// ========== НОВАЯ ФИЗИКА (улучшенные коллизии) ==========
 function moveAxis(dt, axis) {
   player.pos[axis] += player.vel[axis] * dt;
-  const half = PLAYER.width / 2, E = 1e-4;
-  const min = { x: player.pos.x - half, y: player.pos.y,                 z: player.pos.z - half };
-  const max = { x: player.pos.x + half, y: player.pos.y + PLAYER.height, z: player.pos.z + half };
+  const half = PLAYER.width / 2;
+  const minX = Math.floor(player.pos.x - half);
+  const maxX = Math.floor(player.pos.x + half);
+  const minY = Math.floor(player.pos.y);
+  const maxY = Math.floor(player.pos.y + PLAYER.height);
+  const minZ = Math.floor(player.pos.z - half);
+  const maxZ = Math.floor(player.pos.z + half);
 
-  for (let y = Math.floor(min.y); y <= Math.floor(max.y - E); y++)
-    for (let x = Math.floor(min.x); x <= Math.floor(max.x - E); x++)
-      for (let z = Math.floor(min.z); z <= Math.floor(max.z - E); z++) {
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      for (let z = minZ; z <= maxZ; z++) {
         if (world.getBlock(x, y, z) === AIR) continue;
         const v = player.vel[axis];
         if (axis === 'y') {
           if (v < 0) { player.pos.y = y + 1; player.onGround = true; }
           else       { player.pos.y = y - PLAYER.height; }
         } else if (axis === 'x') {
-          player.pos.x = v > 0 ? x - half - E : x + 1 + half + E;
+          player.pos.x = v > 0 ? x - half - 1e-4 : x + 1 + half + 1e-4;
         } else {
-          player.pos.z = v > 0 ? z - half - E : z + 1 + half + E;
+          player.pos.z = v > 0 ? z - half - 1e-4 : z + 1 + half + 1e-4;
         }
         player.vel[axis] = 0;
         return;
       }
+    }
+  }
 }
 
 function resolveBlockStuck() {
@@ -1362,138 +1383,67 @@ function resolveBlockStuck() {
   const feetY = Math.floor(player.pos.y);
   const headY = Math.floor(player.pos.y + PLAYER.height - 0.2);
 
-  let stuck = false;
   for (let y = feetY; y <= headY; y++) {
     for (let x = minX; x <= maxX; x++) {
       for (let z = minZ; z <= maxZ; z++) {
         if (world.getBlock(x, y, z) !== AIR) {
-          stuck = true;
-          break;
+          player.pos.y += 1;
+          player.vel.set(0, 0, 0);
+          player.knock.set(0, 0, 0);
+          return;
         }
       }
     }
   }
-  if (!stuck) return;
-
-  const radius = 5;
-  let bestDist = Infinity;
-  let bestPos = null;
-
-  for (let dx = -radius; dx <= radius; dx++) {
-    for (let dz = -radius; dz <= radius; dz++) {
-      const nx = Math.floor(player.pos.x + dx);
-      const nz = Math.floor(player.pos.z + dz);
-      const groundY = world.terrainHeight(nx, nz);
-      if (world.getBlock(nx, groundY + 1, nz) === AIR &&
-          world.getBlock(nx, groundY + 2, nz) === AIR &&
-          world.getBlock(nx, groundY, nz) !== AIR) {
-        const dist = dx * dx + dz * dz;
-        if (dist < bestDist) {
-          bestDist = dist;
-          bestPos = { x: nx + 0.5, y: groundY + 1, z: nz + 0.5 };
-        }
-      }
-    }
-  }
-
-  if (bestPos) {
-    player.pos.set(bestPos.x, bestPos.y, bestPos.z);
-    player.vel.set(0, 0, 0);
-    player.knock.set(0, 0, 0);
-  } else {
-    player.pos.y += 1;
-  }
 }
 
-function updatePlayer(dt) {
-  camera.rotation.set(pitch, yaw, 0);
-
-  let speedMul = 1;
-  const sp = effectActive('speed');
-  if (sp) speedMul *= sp.power;
-  if (effectActive('slow'))   speedMul *= 0.5;
-  if (effectActive('freeze')) speedMul = 0;
-
-  let jumpPower = JUMP_SPEED;
-  if (effectActive('jump_boost')) jumpPower *= 1.5;
-
-  const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
-  const right   = new THREE.Vector3( Math.cos(yaw), 0, -Math.sin(yaw));
-  const wish = new THREE.Vector3();
-  if (keys.has('KeyW')) wish.add(forward);
-  if (keys.has('KeyS')) wish.sub(forward);
-  if (keys.has('KeyD')) wish.add(right);
-  if (keys.has('KeyA')) wish.sub(right);
-  if (wish.lengthSq() > 0) wish.normalize();
-
-  // Проверка льда под ногами для скольжения
-  let isOnIce = false;
-  const blockUnder = world.getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y - 0.1), Math.floor(player.pos.z));
-  if (blockUnder === ICE || blockUnder === PACKED_ICE) isOnIce = true;
-
-  let walkSpeed = WALK_SPEED;
-  let decay = 0.03;
-  if (isOnIce) {
-    walkSpeed *= 1.5;
-    decay = 0.01;
-  }
-  walkSpeed *= speedMul;
-
-  if (player.flying) {
-    if (keys.has('Space'))     wish.y += 1;
-    if (keys.has('ShiftLeft')) wish.y -= 1;
-    player.pos.addScaledVector(wish, FLY_SPEED * speedMul * dt);
-  } else {
-    player.vel.x = wish.x * walkSpeed + player.knock.x;
-    player.vel.z = wish.z * walkSpeed + player.knock.z;
-    player.knock.x *= Math.pow(decay, dt);
-    player.knock.z *= Math.pow(decay, dt);
-
-    if (effectActive('levitate')) {
-      player.vel.y = keys.has('Space') ? 4 : keys.has('ShiftLeft') ? -4 : 0;
-    } else {
-      player.vel.y -= GRAVITY * dt;
-      if (keys.has('Space') && player.onGround && speedMul > 0) player.vel.y = jumpPower;
-    }
-    player.onGround = false;
-    moveAxis(dt, 'y');
-    moveAxis(dt, 'x');
-    moveAxis(dt, 'z');
-  }
-
-  if (effectActive('weightless')) {
-    if (!player.flying && !player.onGround && player.vel.y < 0) player.vel.y *= 0.98;
-    if (keys.has('Space') && !player.onGround && !player.doubleJumpUsed) {
-      player.vel.y = 6;
-      player.doubleJumpUsed = true;
-      spawnParticles(player.pos.x, player.pos.y, player.pos.z, 0x88ff88, 10, 1, 0.5);
-    }
-    if (player.onGround) player.doubleJumpUsed = false;
-  } else {
-    player.doubleJumpUsed = false;
-  }
-
-  if (player.pos.y < -30) {
-    player.pos.set(0.5, world.terrainHeight(0, 0) + 1, 0.5);
-    player.vel.set(0, 0, 0);
-    player.knock.set(0, 0, 0);
-  }
-  resolveBlockStuck();
-  camera.position.set(player.pos.x, player.pos.y + PLAYER.eye, player.pos.z);
-}
-
-// ========== Райкасты ==========
+// ========== НОВЫЙ DDA РЕЙКАСТИНГ ==========
 function raycastBlock(maxDist = 5) {
-  const dir = new THREE.Vector3();
-  camera.getWorldDirection(dir);
-  const p = camera.position;
-  let prev = null;
-  for (let t = 0; t < maxDist; t += 0.02) {
-    const bx = Math.floor(p.x + dir.x * t);
-    const by = Math.floor(p.y + dir.y * t);
-    const bz = Math.floor(p.z + dir.z * t);
-    if (world.getBlock(bx, by, bz) !== AIR) return { block: [bx, by, bz], prev, dist: t };
-    prev = [bx, by, bz];
+  const origin = camera.position.clone();
+  const direction = new THREE.Vector3();
+  camera.getWorldDirection(direction);
+  direction.normalize();
+
+  let pos = { x: origin.x, y: origin.y, z: origin.z };
+  let step = { x: Math.sign(direction.x), y: Math.sign(direction.y), z: Math.sign(direction.z) };
+  let tDelta = {
+    x: direction.x === 0 ? Infinity : Math.abs(1 / direction.x),
+    y: direction.y === 0 ? Infinity : Math.abs(1 / direction.y),
+    z: direction.z === 0 ? Infinity : Math.abs(1 / direction.z)
+  };
+  let tMax = {
+    x: direction.x === 0 ? Infinity : ((step.x > 0 ? Math.ceil(pos.x) - pos.x : pos.x - Math.floor(pos.x)) / Math.abs(direction.x)),
+    y: direction.y === 0 ? Infinity : ((step.y > 0 ? Math.ceil(pos.y) - pos.y : pos.y - Math.floor(pos.y)) / Math.abs(direction.y)),
+    z: direction.z === 0 ? Infinity : ((step.z > 0 ? Math.ceil(pos.z) - pos.z : pos.z - Math.floor(pos.z)) / Math.abs(direction.z))
+  };
+
+  let dist = 0;
+  while (dist < maxDist) {
+    if (tMax.x < tMax.y && tMax.x < tMax.z) {
+      dist = tMax.x;
+      tMax.x += tDelta.x;
+      pos.x += step.x;
+    } else if (tMax.y < tMax.z) {
+      dist = tMax.y;
+      tMax.y += tDelta.y;
+      pos.y += step.y;
+    } else {
+      dist = tMax.z;
+      tMax.z += tDelta.z;
+      pos.z += step.z;
+    }
+    if (dist > maxDist) break;
+
+    const bx = Math.floor(pos.x);
+    const by = Math.floor(pos.y);
+    const bz = Math.floor(pos.z);
+    const block = world.getBlock(bx, by, bz);
+    if (block !== AIR) {
+      const prevX = bx - step.x;
+      const prevY = by - step.y;
+      const prevZ = bz - step.z;
+      return { block: [bx, by, bz], prev: [prevX, prevY, prevZ], dist };
+    }
   }
   return null;
 }
@@ -1624,7 +1574,6 @@ function refreshUI() {
 }
 refreshUI();
 
-// Список всех блоков для переработки (включая новые)
 const ALL_BLOCK_TYPES = [
   GRASS, DIRT, STONE, WOOD, LEAVES, PLANKS, SAND, GRAVEL, COAL_ORE, IRON_ORE,
   ICE, SNOW_BLOCK, CACTUS, BRICK, OBSIDIAN, GLOWSTONE, MOSSY_STONE, SANDSTONE,
@@ -1755,3 +1704,80 @@ function animate(now) {
   renderer.render(scene, camera);
 }
 requestAnimationFrame(animate);
+
+// Функция updatePlayer (без изменений, но вызывает новые moveAxis/resolveBlockStuck)
+function updatePlayer(dt) {
+  camera.rotation.set(pitch, yaw, 0);
+
+  let speedMul = 1;
+  const sp = effectActive('speed');
+  if (sp) speedMul *= sp.power;
+  if (effectActive('slow'))   speedMul *= 0.5;
+  if (effectActive('freeze')) speedMul = 0;
+
+  let jumpPower = JUMP_SPEED;
+  if (effectActive('jump_boost')) jumpPower *= 1.5;
+
+  const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+  const right   = new THREE.Vector3( Math.cos(yaw), 0, -Math.sin(yaw));
+  const wish = new THREE.Vector3();
+  if (keys.has('KeyW')) wish.add(forward);
+  if (keys.has('KeyS')) wish.sub(forward);
+  if (keys.has('KeyD')) wish.add(right);
+  if (keys.has('KeyA')) wish.sub(right);
+  if (wish.lengthSq() > 0) wish.normalize();
+
+  let isOnIce = false;
+  const blockUnder = world.getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y - 0.1), Math.floor(player.pos.z));
+  if (blockUnder === ICE || blockUnder === PACKED_ICE) isOnIce = true;
+
+  let walkSpeed = WALK_SPEED;
+  let decay = 0.03;
+  if (isOnIce) {
+    walkSpeed *= 1.5;
+    decay = 0.01;
+  }
+  walkSpeed *= speedMul;
+
+  if (player.flying) {
+    if (keys.has('Space'))     wish.y += 1;
+    if (keys.has('ShiftLeft')) wish.y -= 1;
+    player.pos.addScaledVector(wish, FLY_SPEED * speedMul * dt);
+  } else {
+    player.vel.x = wish.x * walkSpeed + player.knock.x;
+    player.vel.z = wish.z * walkSpeed + player.knock.z;
+    player.knock.x *= Math.pow(decay, dt);
+    player.knock.z *= Math.pow(decay, dt);
+
+    if (effectActive('levitate')) {
+      player.vel.y = keys.has('Space') ? 4 : keys.has('ShiftLeft') ? -4 : 0;
+    } else {
+      player.vel.y -= GRAVITY * dt;
+      if (keys.has('Space') && player.onGround && speedMul > 0) player.vel.y = jumpPower;
+    }
+    player.onGround = false;
+    moveAxis(dt, 'y');
+    moveAxis(dt, 'x');
+    moveAxis(dt, 'z');
+  }
+
+  if (effectActive('weightless')) {
+    if (!player.flying && !player.onGround && player.vel.y < 0) player.vel.y *= 0.98;
+    if (keys.has('Space') && !player.onGround && !player.doubleJumpUsed) {
+      player.vel.y = 6;
+      player.doubleJumpUsed = true;
+      spawnParticles(player.pos.x, player.pos.y, player.pos.z, 0x88ff88, 10, 1, 0.5);
+    }
+    if (player.onGround) player.doubleJumpUsed = false;
+  } else {
+    player.doubleJumpUsed = false;
+  }
+
+  if (player.pos.y < -30) {
+    player.pos.set(0.5, world.terrainHeight(0, 0) + 1, 0.5);
+    player.vel.set(0, 0, 0);
+    player.knock.set(0, 0, 0);
+  }
+  resolveBlockStuck();
+  camera.position.set(player.pos.x, player.pos.y + PLAYER.eye, player.pos.z);
+}
