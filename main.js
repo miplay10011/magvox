@@ -1232,7 +1232,7 @@ function syncPosition(now) {
   });
 }
 
-// ========== Мобильное управление ==========
+// ========== Мобильное управление (часть 1: не зависит от инвентаря) ==========
 const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 const mobileKeys = {};
 function isKeyDown(code) {
@@ -1313,7 +1313,6 @@ let lastCamTouch = { x: 0, y: 0 };
 function onTouchStart(e) {
   if (invOpen || settingsOpen || spellBookOpen) return;
   for (const t of e.changedTouches) {
-    // игнорируем нажатия на иконки кольца стихий
     if (t.target.closest('.element-icon')) return;
     if (t.target === renderer.domElement || t.target === document.body) {
       if (camTouchId === null) {
@@ -1381,7 +1380,6 @@ bindMobileButton('btn-attack', () => {
 bindMobileButton('btn-descend', () => {
   mobileKeys['ShiftLeft'] = true;
 });
-// отпускание кнопки спуска
 const descendBtn = document.getElementById('btn-descend');
 if (descendBtn) {
   ['touchend', 'touchcancel', 'mouseup', 'mouseleave'].forEach(ev => {
@@ -1429,7 +1427,7 @@ bindMobileButton('btn-place', () => {
   }
 });
 
-// Кликабельное кольцо стихий для мобильных
+// Кликабельное кольцо стихий и прочие мобильные дополнения (не зависят от инвентаря)
 if (isMobile) {
   iconEls.forEach((el, i) => {
     el.addEventListener('touchstart', (e) => {
@@ -1444,20 +1442,6 @@ if (isMobile) {
       else { selectedSlot = i; refreshUI(); }
     });
   });
-
-  // Слоты хотбара — выбор касанием
-  for (let i = 0; i < hudSlots.length; i++) {
-    const slotEl = hudSlots[i];
-    slotEl.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      selectedSlot = i;
-      refreshUI();
-    });
-    slotEl.addEventListener('click', (e) => {
-      selectedSlot = i;
-      refreshUI();
-    });
-  }
 
   // Кнопка закрытия инвентаря
   const closeInvBtn = document.getElementById('close-inv-btn');
@@ -1797,6 +1781,21 @@ for (let i = 0; i < 9; i++) {
   hotbarEl.appendChild(el);
   hudSlots.push(el);
 }
+// ---- Подключаем обработчики касаний для хотбара сразу после его создания ----
+if (isMobile) {
+  for (let i = 0; i < hudSlots.length; i++) {
+    const slotEl = hudSlots[i];
+    slotEl.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      selectedSlot = i;
+      refreshUI();
+    });
+    slotEl.addEventListener('click', (e) => {
+      selectedSlot = i;
+      refreshUI();
+    });
+  }
+}
 
 const invEl = document.getElementById('inventory');
 const invSlots = [];
@@ -1816,6 +1815,22 @@ if (recycleSlotDiv) {
     e.preventDefault();
     clickSlot(36, e.button);
   });
+}
+
+// ---- Подключаем обработчики касаний для слотов инвентаря и переработки ----
+if (isMobile) {
+  for (let i = 0; i < invSlots.length; i++) {
+    invSlots[i].addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      clickSlot(i, 0);
+    });
+  }
+  if (recycleSlotDiv) {
+    recycleSlotDiv.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      clickSlot(36, 0);
+    });
+  }
 }
 
 function clickSlot(i, button) {
@@ -1893,23 +1908,6 @@ function recycleItem() {
 const recycleBtn = document.getElementById('recycle-button');
 if (recycleBtn) {
   recycleBtn.addEventListener('click', () => recycleItem());
-}
-
-// ========== ДОБАВЛЯЕМ МОБИЛЬНЫЕ ОБРАБОТЧИКИ СЛОТОВ ИНВЕНТАРЯ (после recycleBtn) ==========
-if (isMobile) {
-  // Обработчики для слотов инвентаря (перетаскивание)
-  for (let i = 0; i < invSlots.length; i++) {
-    invSlots[i].addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      clickSlot(i, 0);
-    });
-  }
-  if (recycleSlotDiv) {
-    recycleSlotDiv.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      clickSlot(36, 0);
-    });
-  }
 }
 
 function toggleInventory() {
