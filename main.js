@@ -1392,6 +1392,7 @@ if (descendBtn) {
 bindMobileButton('btn-inventory', () => toggleInventory());
 bindMobileButton('btn-book', () => openSpellBook());
 bindMobileButton('btn-chat', () => { chatInput.focus(); chatInput.value = ''; });
+bindMobileButton('btn-settings', () => { toggleSettings(true); });
 bindMobileButton('btn-combat', () => { combatMode = !combatMode; spellQueue.length = 0; refreshQueueUI(); ringEl.classList.toggle('combat', combatMode); });
 bindMobileButton('btn-break', () => {
   if (combatMode) {
@@ -1443,6 +1444,58 @@ if (isMobile) {
       else { selectedSlot = i; refreshUI(); }
     });
   });
+
+  // Слоты хотбара — выбор касанием
+  for (let i = 0; i < hudSlots.length; i++) {
+    const slotEl = hudSlots[i];
+    slotEl.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      selectedSlot = i;
+      refreshUI();
+    });
+    slotEl.addEventListener('click', (e) => {
+      selectedSlot = i;
+      refreshUI();
+    });
+  }
+
+  // Обработчики для слотов инвентаря (перетаскивание)
+  function setupMobileSlotTouch(slotEl, index) {
+    if (!slotEl) return;
+    slotEl.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      clickSlot(index, 0); // левый клик
+    });
+  }
+  for (let i = 0; i < invSlots.length; i++) {
+    setupMobileSlotTouch(invSlots[i], i);
+  }
+  if (recycleSlotDiv) {
+    setupMobileSlotTouch(recycleSlotDiv, 36);
+  }
+
+  // Кнопка закрытия инвентаря
+  const closeInvBtn = document.getElementById('close-inv-btn');
+  if (closeInvBtn) {
+    closeInvBtn.style.display = 'block';
+    closeInvBtn.addEventListener('click', () => toggleInventory());
+  }
+
+  // Добавление крестика в книгу заклинаний
+  const origOpenSpellBook = openSpellBook;
+  openSpellBook = function() {
+    origOpenSpellBook();
+    if (!spellBookElement) return;
+    let closeBtn = spellBookElement.querySelector('.close-book-btn');
+    if (!closeBtn) {
+      closeBtn = document.createElement('button');
+      closeBtn.textContent = '✕';
+      closeBtn.className = 'close-book-btn';
+      closeBtn.style.cssText = 'position:absolute; top:5px; right:5px; background:#555; color:white; border:none; border-radius:50%; width:30px; height:30px; font-size:16px; cursor:pointer;';
+      closeBtn.addEventListener('click', closeSpellBook);
+      spellBookElement.appendChild(closeBtn);
+    }
+  };
 }
 
 // ========== Управление мышью/клавиатурой (десктоп) ==========

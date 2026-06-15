@@ -29,12 +29,13 @@
     #hotbar {
       position: absolute; bottom: 12px; left: 50%;
       transform: translateX(-50%);
-      display: flex; gap: 4px; pointer-events: none;
+      display: flex; gap: 4px; pointer-events: auto;
       z-index: 10;
     }
     .slot {
       width: 48px; height: 48px; position: relative;
       background: rgba(0,0,0,0.45); border: 2px solid #777;
+      pointer-events: auto;
     }
     .slot.selected { border-color: #fff; }
     .slot .swatch { position: absolute; inset: 9px; border-radius: 2px; }
@@ -48,9 +49,12 @@
       z-index: 100;
     }
     #inventory.open { display: flex; }
-    #inv-panel { background: #c6c6c6; padding: 14px; border: 3px solid #555; border-radius: 4px; }
-    #inv-panel .inv-grid { display: grid; grid-template-columns: repeat(9, 48px); gap: 4px; margin-bottom: 8px; }
-    #inv-panel .slot { pointer-events: auto; cursor: pointer; background: #8b8b8b; }
+    #inv-panel { 
+      background: #c6c6c6; padding: 14px; border: 3px solid #555; border-radius: 4px;
+      max-width: 95vw; max-height: 90vh; overflow: auto;
+    }
+    #inv-panel .inv-grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; margin-bottom: 8px; }
+    #inv-panel .slot { pointer-events: auto; cursor: pointer; background: #8b8b8b; width: 100%; aspect-ratio: 1; }
     #inv-panel .slot:hover { background: #a8a8a8; }
     .recycle-slot {
       background: #2a6f8f !important;
@@ -160,16 +164,18 @@
       align-items: center;
       justify-content: center;
       user-select: none;
-      touch-action: none;
-      min-width: 50px;
-      min-height: 50px;
+      touch-action: manipulation;
+      min-width: 44px;
+      min-height: 44px;
       backdrop-filter: blur(4px);
       text-shadow: 0 0 4px black;
     }
+    /* Джойстик в левом нижнем углу */
     #joy-area {
       position: absolute;
-      bottom: 80px; left: 20px;
-      width: 120px; height: 120px;
+      bottom: 12%; left: 8%;
+      width: 25vw; height: 25vw;
+      max-width: 120px; max-height: 120px;
       background: rgba(255,255,255,0.1);
       border-radius: 50%;
       pointer-events: auto;
@@ -177,23 +183,29 @@
     }
     #joy-stick {
       position: absolute;
-      width: 50px; height: 50px;
+      width: 50%; height: 50%;
       background: rgba(255,255,255,0.4);
       border-radius: 50%;
-      left: 35px; top: 35px;
+      left: 25%; top: 25%;
       transition: left 0.05s, top 0.05s;
     }
-    #btn-jump { bottom: 100px; right: 20px; }
-    #btn-fly { bottom: 160px; right: 20px; }
-    #btn-attack { bottom: 220px; right: 20px; } /* новая кнопка атаки */
-    #btn-descend { bottom: 220px; right: 80px; } /* спуск */
-    #btn-inventory { top: 20px; right: 20px; }
-    #btn-book { top: 80px; right: 20px; }
-    #btn-chat { top: 140px; right: 20px; }
-    #btn-combat { top: 20px; left: 20px; }
-    #btn-break { bottom: 20px; left: 50%; transform: translateX(-50%); }
-    #btn-place { bottom: 70px; left: 50%; transform: translateX(-50%); }
+    /* Правый нижний блок кнопок (прыжок, полёт, спуск, атака) */
+    #btn-jump { bottom: 12%; right: 20%; }
+    #btn-fly { bottom: 18%; right: 20%; }
+    #btn-descend { bottom: 18%; right: 8%; }
+    #btn-attack { bottom: 24%; right: 20%; }
+    /* Правый верхний блок (инвентарь, книга, чат, настройки) */
+    #btn-inventory { top: 12%; right: 8%; }
+    #btn-book { top: 20%; right: 8%; }
+    #btn-chat { top: 28%; right: 8%; }
+    #btn-settings { top: 36%; right: 8%; } /* новая */
+    /* Верхний левый угол (боевой режим) */
+    #btn-combat { top: 12%; left: 8%; }
+    /* Нижний центр (ломать/ставить) */
+    #btn-break { bottom: 8%; left: 50%; transform: translateX(-50%); }
+    #btn-place { bottom: 16%; left: 50%; transform: translateX(-50%); }
 
+    /* Адаптация под мобильные */
     @media (max-width: 1024px), (pointer: coarse) {
       #mobile-controls { display: block; }
       #hud { font-size: 10px; top: 5px; left: 5px; }
@@ -205,9 +217,26 @@
       #crosshair { font-size: 18px; }
       #chat-container { width: 200px; }
       #chat-messages { height: 120px; }
-      /* при мобиле кольцо должно быть кликабельно */
       #magic-ring.combat { pointer-events: auto; }
       .element-icon { pointer-events: auto; }
+      /* адаптация книги и инвентаря */
+      .spell-book {
+        width: 90vw !important;
+        max-height: 85vh !important;
+        font-size: 12px;
+      }
+      #inv-panel {
+        padding: 8px;
+      }
+      #inv-panel .inv-grid {
+        grid-template-columns: repeat(9, 1fr);
+        gap: 2px;
+      }
+      #inv-panel .slot {
+        width: 100%;
+        aspect-ratio: 1;
+        font-size: 12px;
+      }
     }
   </style>
   <script type="importmap">
@@ -220,8 +249,7 @@
   </script>
 </head>
 <body>
-  <div id="hud">Клик — мышь · WASD · Space · E инвентарь · H - Книга заклинаний · Q бой/стройка ·
-    бой: 1–9 элементы, ЛКМ каст, ПКМ убрать, X сброс · Tab настройки · T, /, Enter чат · /fly полёт /kill Умереть</div>
+  <div id="hud">Клик — мышь · WASD · Space · E инвентарь · H - Книга · Q бой · бой: 1–9 элементы, ЛКМ/ПКМ каст · Tab настройки · T чат · /fly /kill</div>
   <div id="status">подключение…</div>
   <div id="crosshair">+</div>
   <div id="magic-ring"></div>
@@ -240,6 +268,7 @@
       </div>
       <div class="inv-grid" id="inv-main"></div>
       <div class="inv-grid" id="inv-hotbar-row"></div>
+      <button id="close-inv-btn" style="margin-top:8px; width:100%; display:none; background:#444; color:white; border:none; padding:8px;">Закрыть инвентарь</button>
     </div>
   </div>
   <div id="held-item"><div class="count"></div></div>
@@ -257,11 +286,12 @@
     </div>
     <div class="mobile-btn" id="btn-jump">🦘</div>
     <div class="mobile-btn" id="btn-fly">🕊️</div>
-    <div class="mobile-btn" id="btn-attack">⚔️</div>   <!-- кнопка атаки -->
-    <div class="mobile-btn" id="btn-descend">🔽</div> <!-- спуск в полёте -->
+    <div class="mobile-btn" id="btn-attack">⚔️</div>
+    <div class="mobile-btn" id="btn-descend">🔽</div>
     <div class="mobile-btn" id="btn-inventory">🎒</div>
     <div class="mobile-btn" id="btn-book">📖</div>
     <div class="mobile-btn" id="btn-chat">💬</div>
+    <div class="mobile-btn" id="btn-settings">⚙️</div>
     <div class="mobile-btn" id="btn-combat">⚔️</div>
     <div class="mobile-btn" id="btn-break">⛏️</div>
     <div class="mobile-btn" id="btn-place">🧱</div>
