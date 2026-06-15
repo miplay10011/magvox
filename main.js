@@ -292,6 +292,12 @@ function remeshChunk(chunk) {
 
 function startWorld(seed, edits = []) {
   world = new World(seed);
+  // Быстрая генерация центральных чанков (чтобы сразу было видно)
+const cx0 = Math.floor(player.pos.x / CHUNK_SIZE);
+const cz0 = Math.floor(player.pos.z / CHUNK_SIZE);
+for (let dx = -4; dx <= 4; dx++)
+  for (let dz = -4; dz <= 4; dz++)
+    world.generateChunk(cx0 + dx, cz0 + dz);
   // Распаковка сжатых edits (бинарный массив)
   if (edits instanceof Uint8Array) {
     for (let i = 0; i < edits.length; i += 4) {
@@ -317,12 +323,7 @@ function chunkManagerTick() {
   const pcx = Math.floor(player.pos.x / CHUNK_SIZE);
   const pcz = Math.floor(player.pos.z / CHUNK_SIZE);
   
-  const moved = (pcx !== lastChunkX || pcz !== lastChunkZ);
-  if (moved) {
-    lastChunkX = pcx;
-    lastChunkZ = pcz;
-  }
-
+  // 1. Всегда перестраиваем грязные чанки (независимо от движения)
   let dirtyBudget = 4;
   for (const chunk of dirtyChunks) {
     if (dirtyBudget-- <= 0) break;
@@ -330,22 +331,27 @@ function chunkManagerTick() {
     remeshChunk(chunk);
   }
 
-  if (!moved) return;
+  // 2. Проверяем, перешёл ли игрок в другой чанк (тогда выгружаем дальние)
+  const moved = (pcx !== lastChunkX || pcz !== lastChunkZ);
+  if (moved) {
+    lastChunkX = pcx;
+    lastChunkZ = pcz;
 
-  const wantFull = new Set();
-  for (let dx = -FULL_RADIUS; dx <= FULL_RADIUS; dx++)
-    for (let dz = -FULL_RADIUS; dz <= FULL_RADIUS; dz++)
-      wantFull.add(world.key(pcx + dx, pcz + dz));
+    const wantFull = new Set();
+    for (let dx = -FULL_RADIUS; dx <= FULL_RADIUS; dx++)
+      for (let dz = -FULL_RADIUS; dz <= FULL_RADIUS; dz++)
+        wantFull.add(world.key(pcx + dx, pcz + dz));
 
-  const toDelete = [];
-  for (const [key, c] of world.chunks)
-    if (!wantFull.has(key)) toDelete.push([key, c]);
-  for (const [key, c] of toDelete) {
-    if (c.mesh) { scene.remove(c.mesh); c.mesh.geometry.dispose(); }
-    dirtyChunks.delete(c);
-    world.chunks.delete(key);
+    for (const [key, c] of world.chunks) {
+      if (!wantFull.has(key)) {
+        if (c.mesh) { scene.remove(c.mesh); c.mesh.geometry.dispose(); }
+        dirtyChunks.delete(c);
+        world.chunks.delete(key);
+      }
+    }
   }
 
+  // 3. Генерируем недостающие чанки ВСЕГДА (на полном радиусе)
   const missing = [];
   for (let dx = -FULL_RADIUS; dx <= FULL_RADIUS; dx++)
     for (let dz = -FULL_RADIUS; dz <= FULL_RADIUS; dz++) {
@@ -361,6 +367,7 @@ function chunkManagerTick() {
     const chunk = world.generateChunk(cx, cz);
     chunk.dirty = true;
     remeshChunk(chunk);
+    // Отмечаем соседние чанки как грязные (для стыков)
     for (const [nx, nz] of [[cx+1,cz],[cx-1,cz],[cx,cz+1],[cx,cz-1]]) {
       const nb = world.getChunk(nx, nz);
       if (nb) { nb.dirty = true; dirtyChunks.add(nb); }
