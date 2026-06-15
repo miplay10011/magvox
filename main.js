@@ -298,15 +298,20 @@ const cz0 = Math.floor(player.pos.z / CHUNK_SIZE);
 for (let dx = -4; dx <= 4; dx++)
   for (let dz = -4; dz <= 4; dz++)
     world.generateChunk(cx0 + dx, cz0 + dz);
-  // Распаковка сжатых edits (бинарный массив)
-  if (edits instanceof Uint8Array) {
-    for (let i = 0; i < edits.length; i += 4) {
-      const x = edits[i], y = edits[i+1], z = edits[i+2], t = edits[i+3];
-      world.edits.set(`${x},${y},${z}`, t);
-    }
-  } else {
-    for (const [key, t] of edits) world.edits.set(key, t);
+  // Сервер присылает edits как массив чисел (из-за JSON.stringify Uint8Array)
+if (Array.isArray(edits) && edits.length > 0 && typeof edits[0] === 'number') {
+  for (let i = 0; i < edits.length; i += 4) {
+    const x = edits[i], y = edits[i+1], z = edits[i+2], t = edits[i+3];
+    world.edits.set(`${x},${y},${z}`, t);
   }
+} else if (edits instanceof Uint8Array) {
+  for (let i = 0; i < edits.length; i += 4) {
+    const x = edits[i], y = edits[i+1], z = edits[i+2], t = edits[i+3];
+    world.edits.set(`${x},${y},${z}`, t);
+  }
+} else {
+  for (const [key, t] of edits) world.edits.set(key, t);
+}
   player.pos.set(0.5, world.terrainHeight(0, 0) + 1, 0.5);
   player.vel.set(0, 0, 0);
   for (const [key, mesh] of lodMeshes) {
@@ -965,6 +970,7 @@ let shieldMesh = null;
 net.on('init', (m) => {
   myId = m.id;
   myNickname = m.nickname;
+  setStatus('мир загружается...');
   startWorld(m.seed, m.edits);
   for (const p of m.players) addRemotePlayer(p.id, p);
   if (m.snapshot) {
