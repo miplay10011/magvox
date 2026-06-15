@@ -14,7 +14,6 @@ import { initParticles, spawnParticles, updateParticles } from './particles.js';
 
 // ========== Книга комбинаций (данные) ==========
 const SPELL_COMBINATIONS = [
-  // (полный список заклинаний, как было)
   { name: "🚀 Прыгучесть / 💨 Воздушный толчок", elements: "💨 + 💨 + 🪨", effect: "🔸 ПКМ: +50% высоты прыжка (75с) / 🔹 ЛКМ: отбрасывает врагов" },
   { name: "💚 Регенерация / 💧 Водный снаряд", elements: "💧 + ☀ + ☀", effect: "🔸 ПКМ: восстановление 1 HP/с (50с) / 🔹 ЛКМ: водяной шар (урон 6)" },
   { name: "🔥 Огнеупорность / 🔥 Огненный шар", elements: "🔥 + 🪨 + 🛡", effect: "🔸 ПКМ: сопротивление огню 50% (100с) / 🔹 ЛКМ: огненный шар (урон 10, взрыв)" },
@@ -1314,6 +1313,8 @@ let lastCamTouch = { x: 0, y: 0 };
 function onTouchStart(e) {
   if (invOpen || settingsOpen || spellBookOpen) return;
   for (const t of e.changedTouches) {
+    // игнорируем нажатия на иконки кольца стихий
+    if (t.target.closest('.element-icon')) return;
     if (t.target === renderer.domElement || t.target === document.body) {
       if (camTouchId === null) {
         camTouchId = t.identifier;
@@ -1353,6 +1354,7 @@ document.addEventListener('touchmove', onTouchMove, { passive: false });
 document.addEventListener('touchend', onTouchEnd);
 document.addEventListener('touchcancel', onTouchEnd);
 
+// Кнопки действий
 function bindMobileButton(id, action) {
   const btn = document.getElementById(id);
   if (!btn) return;
@@ -1368,6 +1370,25 @@ function bindMobileButton(id, action) {
 
 bindMobileButton('btn-jump', () => { mobileKeys['Space'] = true; setTimeout(() => mobileKeys['Space'] = false, 100); });
 bindMobileButton('btn-fly', () => { player.flying = !player.flying; player.vel.set(0,0,0); addChatMessage('Система', player.flying ? 'Полёт вкл' : 'Полёт выкл'); });
+bindMobileButton('btn-attack', () => {
+  if (!combatMode) return;
+  if (spellQueue.length) castSpell('left');
+  else {
+    const target = raycastPlayers(4.5);
+    if (target) net.send('attack', { target: target.id });
+  }
+});
+bindMobileButton('btn-descend', () => {
+  mobileKeys['ShiftLeft'] = true;
+});
+// отпускание кнопки спуска
+const descendBtn = document.getElementById('btn-descend');
+if (descendBtn) {
+  ['touchend', 'touchcancel', 'mouseup', 'mouseleave'].forEach(ev => {
+    descendBtn.addEventListener(ev, () => { mobileKeys['ShiftLeft'] = false; });
+  });
+}
+
 bindMobileButton('btn-inventory', () => toggleInventory());
 bindMobileButton('btn-book', () => openSpellBook());
 bindMobileButton('btn-chat', () => { chatInput.focus(); chatInput.value = ''; });
@@ -1407,19 +1428,20 @@ bindMobileButton('btn-place', () => {
   }
 });
 
-const elementsRow = document.getElementById('elements-row');
-if (elementsRow && isMobile) {
-  ELEMENTS.forEach((el, i) => {
-    const btn = document.createElement('div');
-    btn.className = 'element-btn';
-    btn.textContent = el.icon;
-    btn.style.background = el.color + '44';
-    btn.addEventListener('touchstart', (e) => {
+// Кликабельное кольцо стихий для мобильных
+if (isMobile) {
+  iconEls.forEach((el, i) => {
+    el.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (combatMode) addElement(i);
+      else { selectedSlot = i; refreshUI(); }
+    });
+    el.addEventListener('mousedown', (e) => {
       e.preventDefault();
       if (combatMode) addElement(i);
       else { selectedSlot = i; refreshUI(); }
     });
-    elementsRow.appendChild(btn);
   });
 }
 
