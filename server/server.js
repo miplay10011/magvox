@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { createMagicEngine } from '../magic.js';
+import { EnemyManager, ENEMY_TYPES } from './enemies.js';  // ENEMY SYSTEM
 
 process.on('uncaughtException', (err) => console.error('❌ Uncaught Exception:', err));
 
@@ -1062,6 +1063,26 @@ const magicCtx = {
 
 const magic = createMagicEngine(magicCtx);
 
+// ==================== ИНИЦИАЛИЗАЦИЯ МЕНЕДЖЕРА ВРАГОВ ====================
+let enemyManager = null;  // будет создан после того, как магия готова
+
+function initEnemyManager() {
+    enemyManager = new EnemyManager(
+        players,
+        getBlockType,          // функция получения блока
+        getCachedHeight,       // высота местности
+        (targetId, dmg, src) => applyDamage(targetId, dmg, src),  // урон по игроку
+        (playerId, effect, duration, power) => {                   // добавление эффекта
+            const p = players.get(playerId);
+            if (!p) return;
+            p.effects.set(effect, { until: Date.now() + duration * 1000, power });
+            syncEffects(p);
+        },
+        (type, data, exceptId) => broadcast(type, data, exceptId), // широковещание
+        magic                                              // магическая система (для снарядов)
+    );
+}
+
 const TICK = 50;
 let lastManaSync = 0;
 setInterval(() => {
@@ -1140,6 +1161,11 @@ setInterval(() => {
     for (const q of players.values()) send(q.ws, 'mana', { mana: Math.floor(q.mana) });
   }
   magic.tick(dt);
+  
+  // ========== ОБНОВЛЕНИЕ ВРАГОВ ==========
+  if (enemyManager) {
+      enemyManager.update(dt);
+  }
 }, TICK);
 
 wss.on('connection', (ws) => {
@@ -1153,6 +1179,7 @@ wss.on('connection', (ws) => {
   });
   console.log(`+ ${nickname} (id ${id}) · всего: ${players.size}`);
 
+  // Отправляем новому игроку данные о мире и врагах
   send(ws, 'init', {
     id, nickname, seed,
     edits: [...edits],
@@ -1162,6 +1189,7 @@ wss.on('connection', (ws) => {
     })),
     zones: [...activeZones].map(([zid, z]) => ({ id: zid, x: z.x, z: z.z, radius: z.radius, effect: z.effect })),
     timeSlowZones: [...timeSlowZones].map(([zid, z]) => ({ id: zid, x: z.x, z: z.z, radius: z.radius, duration: (z.endTime - Date.now()) / 1000 })),
+    enemies: enemyManager ? enemyManager.getEnemyData() : []   // ENEMY SYSTEM
   });
   broadcast('join', { id, nickname }, id);
 
@@ -1189,6 +1217,17 @@ wss.on('connection', (ws) => {
         } else broadcast('lightningEffect', { from: id, to: msg.target });
       }
       applyDamage(msg.target, 4, { ax: q.x, az: q.z, kb: 8, attackerId: id, weapon: 'меча' });
+    } else if (msg.type === 'attackEnemy') {   // ENEMY SYSTEM: атака по врагу
+      const enemyId = msg.target;
+      const now = Date.now();
+      if (now - q.lastAttack < 400) return;
+      const enemy = enemyManager?.enemies.get(enemyId);
+      if (!enemy) return;
+      const dx = q.x - enemy.x, dz = q.z - enemy.z, dy = q.y - enemy.y;
+      if (Math.hypot(dx, dz) > 4.5 || Math.abs(dy) > 2) return;
+      q.lastAttack = now;
+      const dmg = 4; // урон мечом
+      enemyManager.damageEnemy(enemyId, dmg, q.x, q.z, 6);
     } else if (msg.type === 'cast') {
       magic.cast(id, msg.elements, msg.dir, { x: q.x, y: q.y + 1.62, z: q.z }, q.yaw, msg.hand || 'left');
     } else if (msg.type === 'chat') {
@@ -1207,6 +1246,9 @@ wss.on('connection', (ws) => {
     console.log(`- ${nickname} (id ${id}) · всего: ${players.size}`);
   });
 });
+
+// Инициализируем менеджера врагов после того, как магия создана
+initEnemyManager();
 
 const PORT = process.env.PORT || 8081;
 httpServer.listen(PORT, () => console.log(`Игра: http://localhost:${PORT} · сид: ${seed}`));

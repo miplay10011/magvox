@@ -554,6 +554,134 @@ let myId = null;
 let myNickname = '';
 const remotePlayers = new Map();
 
+// ========== ВРАГИ (ENEMY SYSTEM) ==========
+let enemies = new Map();          // id -> { group, targetPos, health, maxHealth, type, lastSync }
+const enemyHealthBars = new Map(); // id -> { div, fill, max }
+
+// Создание модели врага по типу
+function createEnemyModel(type, health) {
+    const group = new THREE.Group();
+    let color = 0x88aa88;
+    switch (type) {
+        case 'zombie': color = 0x5a6b4a; break;
+        case 'skeleton': color = 0xcdcdcd; break;
+        case 'creeper': color = 0x5f9e6e; break;
+        case 'ghost': color = 0xddddff; break;
+        case 'fireElemental': color = 0xff6633; break;
+        default: color = 0xaa8866;
+    }
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.6 });
+    // тело
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.2, 0.8), mat);
+    body.position.y = 0.6;
+    group.add(body);
+    // голова
+    const headMat = new THREE.MeshStandardMaterial({ color: color });
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), headMat);
+    head.position.y = 1.2;
+    group.add(head);
+    return group;
+}
+
+function addEnemyHealthBar(id, group, current, max) {
+    const div = document.createElement('div');
+    div.className = 'enemy-health-bar';
+    div.style.cssText = `
+        position: absolute; background: #a00; width: 60px; height: 8px;
+        border-radius: 4px; overflow: hidden; pointer-events: none;
+        transform: translate(-50%, -50%); z-index: 100;
+    `;
+    const fill = document.createElement('div');
+    fill.style.cssText = `height: 100%; width: ${(current/max)*100}%; background: #0f0; transition: width 0.2s;`;
+    div.appendChild(fill);
+    document.body.appendChild(div);
+    enemyHealthBars.set(id, { div, fill, max });
+}
+
+function updateEnemyHealthBar(id, current, max) {
+    const bar = enemyHealthBars.get(id);
+    if (bar) {
+        bar.fill.style.width = `${(current/max)*100}%`;
+        if (current <= 0) removeEnemyHealthBar(id);
+    }
+}
+
+function removeEnemyHealthBar(id) {
+    const bar = enemyHealthBars.get(id);
+    if (bar) {
+        bar.div.remove();
+        enemyHealthBars.delete(id);
+    }
+}
+
+function updateHealthBars() {
+    for (const [id, bar] of enemyHealthBars) {
+        const enemy = enemies.get(id);
+        if (enemy && enemy.group) {
+            const pos = enemy.group.position.clone();
+            pos.y += 1.5;
+            const screen = pos.project(camera);
+            const x = (screen.x * 0.5 + 0.5) * renderer.domElement.clientWidth;
+            const y = (-screen.y * 0.5 + 0.5) * renderer.domElement.clientHeight;
+            bar.div.style.left = x + 'px';
+            bar.div.style.top = (y - 20) + 'px';
+            bar.div.style.display = 'block';
+        } else {
+            bar.div.style.display = 'none';
+        }
+    }
+}
+
+function spawnEnemy(id, type, x, y, z, health, maxHealth) {
+    if (enemies.has(id)) return;
+    const group = createEnemyModel(type, health);
+    group.position.set(x, y, z);
+    scene.add(group);
+    const targetPos = new THREE.Vector3(x, y, z);
+    enemies.set(id, { group, targetPos, health, maxHealth, type, lastSync: Date.now() });
+    addEnemyHealthBar(id, group, health, maxHealth);
+}
+
+function removeEnemy(id) {
+    const enemy = enemies.get(id);
+    if (enemy) {
+        scene.remove(enemy.group);
+        removeEnemyHealthBar(id);
+        enemies.delete(id);
+    }
+}
+
+function updateEnemyPosition(id, x, y, z, yaw) {
+    const enemy = enemies.get(id);
+    if (enemy) {
+        enemy.targetPos.set(x, y, z);
+        if (yaw !== undefined) enemy.group.rotation.y = yaw;
+        enemy.lastSync = Date.now();
+    }
+}
+
+function updateEnemyHealth(id, health, maxHealth) {
+    const enemy = enemies.get(id);
+    if (enemy) {
+        enemy.health = health;
+        enemy.maxHealth = maxHealth;
+        updateEnemyHealthBar(id, health, maxHealth);
+        if (health <= 0) removeEnemy(id);
+    }
+}
+
+function flashEnemyGroup(group) {
+    if (!group) return;
+    group.children.forEach(child => {
+        if (child.isMesh && child.material) {
+            const orig = child.material.color.getHex();
+            child.material.color.setHex(0xff4444);
+            setTimeout(() => { child.material.color.setHex(orig); }, 200);
+        }
+    });
+}
+
+// ========== Создание модели игрока ==========
 function createPlayerModel(color) {
   const group = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.1 });
@@ -919,6 +1047,44 @@ const EVENTS = {
     scene.add(ring);
     setTimeout(() => scene.remove(ring), (m.duration || 15) * 1000);
   },
+
+  // ========== СОБЫТИЯ ВРАГОВ (ENEMY SYSTEM) ==========
+  enemySpawn: (m) => {
+    spawnEnemy(m.id, m.type, m.x, m.y, m.z, m.health, m.maxHealth);
+  },
+  enemyMove: (m) => {
+    updateEnemyPosition(m.id, m.x, m.y, m.z, m.yaw);
+  },
+  enemyHp: (m) => {
+    updateEnemyHealth(m.id, m.health, m.maxHealth);
+  },
+  enemyDeath: (m) => {
+    const enemy = enemies.get(m.id);
+    if (enemy) {
+      spawnParticles(enemy.group.position.x, enemy.group.position.y + 1, enemy.group.position.z, 0xaa5555, 30, 2, 1.0);
+      removeEnemy(m.id);
+    }
+  },
+  enemyAttack: (m) => {
+    const enemy = enemies.get(m.id);
+    if (enemy) {
+      // анимация атаки (встряска)
+      enemy.group.position.y += 0.2;
+      setTimeout(() => { if (enemy.group) enemy.group.position.y -= 0.2; }, 200);
+      // визуальный эффект у цели (если цель игрок)
+      if (m.targetId === myId) {
+        damageFlash();
+        spawnParticles(camera.position.x, camera.position.y - 0.5, camera.position.z, 0xff6666, 20, 1.5, 0.8);
+      } else {
+        const targetPlayer = remotePlayers.get(m.targetId);
+        if (targetPlayer) {
+          const pos = targetPlayer.group.position;
+          spawnParticles(pos.x, pos.y + 1, pos.z, 0xff6666, 20, 1.5, 0.8);
+          flashPlayerModel(targetPlayer.group, 200);
+        }
+      }
+    }
+  },
 };
 for (const [t, f] of Object.entries(EVENTS)) net.on(t, f);
 
@@ -945,6 +1111,14 @@ net.on('init', (m) => {
   }
   if (m.zones) m.zones.forEach(z => EVENTS.zoneSpawn(z));
   if (m.timeSlowZones) m.timeSlowZones.forEach(z => EVENTS.timeSlowZone(z));
+
+  // ========== СПАВН СУЩЕСТВУЮЩИХ ВРАГОВ (ENEMY SYSTEM) ==========
+  if (m.enemies) {
+    for (const e of m.enemies) {
+      spawnEnemy(e.id, e.type, e.x, e.y, e.z, e.health, e.maxHealth);
+    }
+  }
+
   setStatus(`онлайн · игроков: ${remotePlayers.size}`);
 });
 net.on('join',  (m) => addRemotePlayer(m.id, { x: 0.5, y: 80, z: 0.5, yaw: 0, nickname: m.nickname }));
@@ -1232,7 +1406,7 @@ function syncPosition(now) {
   });
 }
 
-// ========== Мобильное управление (часть 1: не зависит от инвентаря) ==========
+// ========== Мобильное управление ==========
 const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 const mobileKeys = {};
 function isKeyDown(code) {
@@ -1373,6 +1547,12 @@ bindMobileButton('btn-attack', () => {
   if (!combatMode) return;
   if (spellQueue.length) castSpell('left');
   else {
+    // Сначала проверяем врагов
+    const enemyHit = raycastEnemy(4.5);
+    if (enemyHit) {
+      net.send('attackEnemy', { target: enemyHit.id });
+      return;
+    }
     const target = raycastPlayers(4.5);
     if (target) net.send('attack', { target: target.id });
   }
@@ -1394,6 +1574,12 @@ bindMobileButton('btn-settings', () => { toggleSettings(true); });
 bindMobileButton('btn-combat', () => { combatMode = !combatMode; spellQueue.length = 0; refreshQueueUI(); ringEl.classList.toggle('combat', combatMode); });
 bindMobileButton('btn-break', () => {
   if (combatMode) {
+    // атака по врагу или игроку или заклинание
+    const enemyHit = raycastEnemy(4.5);
+    if (enemyHit) {
+      net.send('attackEnemy', { target: enemyHit.id });
+      return;
+    }
     const target = raycastPlayers(4.5);
     if (target) { net.send('attack', { target: target.id }); }
     else if (spellQueue.length) castSpell('left');
@@ -1427,7 +1613,7 @@ bindMobileButton('btn-place', () => {
   }
 });
 
-// Кликабельное кольцо стихий и прочие мобильные дополнения (не зависят от инвентаря)
+// Кликабельное кольцо стихий и прочие мобильные дополнения
 if (isMobile) {
   iconEls.forEach((el, i) => {
     el.addEventListener('touchstart', (e) => {
@@ -1443,14 +1629,12 @@ if (isMobile) {
     });
   });
 
-  // Кнопка закрытия инвентаря
   const closeInvBtn = document.getElementById('close-inv-btn');
   if (closeInvBtn) {
     closeInvBtn.style.display = 'block';
     closeInvBtn.addEventListener('click', () => toggleInventory());
   }
 
-  // Добавление крестика в книгу заклинаний
   const origOpenSpellBook = openSpellBook;
   openSpellBook = function() {
     origOpenSpellBook();
@@ -1742,6 +1926,27 @@ function raycastPlayers(maxDist) {
   return best;
 }
 
+// ========== Рейкаст по врагам (ENEMY SYSTEM) ==========
+function raycastEnemy(maxDist) {
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  const origin = camera.position;
+  let closest = null;
+  let bestDist = Infinity;
+  for (const [id, e] of enemies) {
+    // используем простую проверку сферой/кубом
+    const box = new THREE.Box3().setFromObject(e.group);
+    const ray = new THREE.Ray(origin, dir);
+    const hitPoint = new THREE.Vector3();
+    const hit = ray.intersectBox(box, hitPoint);
+    if (hit && hit.distance < maxDist && hit.distance < bestDist) {
+      bestDist = hit.distance;
+      closest = { id, dist: hit.distance };
+    }
+  }
+  return closest;
+}
+
 function intersectsPlayer(bx, by, bz) {
   const half = PLAYER.width / 2;
   return bx + 1 > player.pos.x - half && bx < player.pos.x + half &&
@@ -1781,7 +1986,6 @@ for (let i = 0; i < 9; i++) {
   hotbarEl.appendChild(el);
   hudSlots.push(el);
 }
-// ---- Подключаем обработчики касаний для хотбара сразу после его создания ----
 if (isMobile) {
   for (let i = 0; i < hudSlots.length; i++) {
     const slotEl = hudSlots[i];
@@ -1817,7 +2021,6 @@ if (recycleSlotDiv) {
   });
 }
 
-// ---- Подключаем обработчики касаний для слотов инвентаря и переработки ----
 if (isMobile) {
   for (let i = 0; i < invSlots.length; i++) {
     invSlots[i].addEventListener('touchstart', (e) => {
@@ -1935,6 +2138,12 @@ document.addEventListener('mousedown', (e) => {
 
   if (combatMode) {
     if (e.button === 0) {
+      // атака по врагу, игроку или заклинание
+      const enemyHit = raycastEnemy(4.5);
+      if (enemyHit) {
+        net.send('attackEnemy', { target: enemyHit.id });
+        return;
+      }
       if (spellQueue.length) castSpell('left');
       else { const t = raycastPlayers(4.5); if (t) net.send('attack', { target: t.id }); }
     } else if (e.button === 2) {
@@ -1945,6 +2154,12 @@ document.addEventListener('mousedown', (e) => {
 
   const hit = raycastBlock(5);
   if (e.button === 0) {
+    // сначала враг
+    const enemyHit = raycastEnemy(4.5);
+    if (enemyHit) {
+      net.send('attackEnemy', { target: enemyHit.id });
+      return;
+    }
     const target = raycastPlayers(4.5);
     if (target && (!hit || target.dist < hit.dist)) {
       net.send('attack', { target: target.id });
@@ -1984,6 +2199,13 @@ function animate(now) {
       Math.floor(player.pos.z / CHUNK_SIZE));
     if (ready && !chatFocused && !settingsOpen && !spellBookOpen) updatePlayer(dt);
     updateRemotePlayers(dt);
+
+    // ========== Интерполяция врагов (ENEMY SYSTEM) ==========
+    const lerpFactor = 1 - Math.pow(0.0001, dt);
+    for (const enemy of enemies.values()) {
+      enemy.group.position.lerp(enemy.targetPos, lerpFactor);
+    }
+    updateHealthBars();
 
     for (const pr of projectiles.values()) {
       if (pr.gravity || pr.kind === 'meteor') pr.vel.y -= (pr.kind === 'meteor' ? 10 : 20) * dt;
