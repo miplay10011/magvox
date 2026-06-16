@@ -556,7 +556,6 @@ const remotePlayers = new Map();
 
 // ========== ВРАГИ (ENEMY SYSTEM) ==========
 let enemies = new Map();          // id -> { group, targetPos, health, maxHealth, type, lastSync }
-const enemyHealthBars = new Map(); // id -> { div, fill, max }
 
 // Создание модели врага по типу
 function createEnemyModel(type, health) {
@@ -571,65 +570,14 @@ function createEnemyModel(type, health) {
         default: color = 0xaa8866;
     }
     const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.6 });
-    // тело
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.2, 0.8), mat);
     body.position.y = 0.6;
     group.add(body);
-    // голова
     const headMat = new THREE.MeshStandardMaterial({ color: color });
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), headMat);
     head.position.y = 1.2;
     group.add(head);
     return group;
-}
-
-function addEnemyHealthBar(id, group, current, max) {
-    const div = document.createElement('div');
-    div.className = 'enemy-health-bar';
-    div.style.cssText = `
-        position: absolute; background: #a00; width: 60px; height: 8px;
-        border-radius: 4px; overflow: hidden; pointer-events: none;
-        transform: translate(-50%, -50%); z-index: 100;
-    `;
-    const fill = document.createElement('div');
-    fill.style.cssText = `height: 100%; width: ${(current/max)*100}%; background: #0f0; transition: width 0.2s;`;
-    div.appendChild(fill);
-    document.body.appendChild(div);
-    enemyHealthBars.set(id, { div, fill, max });
-}
-
-function updateEnemyHealthBar(id, current, max) {
-    const bar = enemyHealthBars.get(id);
-    if (bar) {
-        bar.fill.style.width = `${(current/max)*100}%`;
-        if (current <= 0) removeEnemyHealthBar(id);
-    }
-}
-
-function removeEnemyHealthBar(id) {
-    const bar = enemyHealthBars.get(id);
-    if (bar) {
-        bar.div.remove();
-        enemyHealthBars.delete(id);
-    }
-}
-
-function updateHealthBars() {
-    for (const [id, bar] of enemyHealthBars) {
-        const enemy = enemies.get(id);
-        if (enemy && enemy.group) {
-            const pos = enemy.group.position.clone();
-            pos.y += 1.5;
-            const screen = pos.project(camera);
-            const x = (screen.x * 0.5 + 0.5) * renderer.domElement.clientWidth;
-            const y = (-screen.y * 0.5 + 0.5) * renderer.domElement.clientHeight;
-            bar.div.style.left = x + 'px';
-            bar.div.style.top = (y - 20) + 'px';
-            bar.div.style.display = 'block';
-        } else {
-            bar.div.style.display = 'none';
-        }
-    }
 }
 
 function spawnEnemy(id, type, x, y, z, health, maxHealth) {
@@ -639,14 +587,12 @@ function spawnEnemy(id, type, x, y, z, health, maxHealth) {
     scene.add(group);
     const targetPos = new THREE.Vector3(x, y, z);
     enemies.set(id, { group, targetPos, health, maxHealth, type, lastSync: Date.now() });
-    addEnemyHealthBar(id, group, health, maxHealth);
 }
 
 function removeEnemy(id) {
     const enemy = enemies.get(id);
     if (enemy) {
         scene.remove(enemy.group);
-        removeEnemyHealthBar(id);
         enemies.delete(id);
     }
 }
@@ -665,7 +611,6 @@ function updateEnemyHealth(id, health, maxHealth) {
     if (enemy) {
         enemy.health = health;
         enemy.maxHealth = maxHealth;
-        updateEnemyHealthBar(id, health, maxHealth);
         if (health <= 0) removeEnemy(id);
     }
 }
@@ -1067,21 +1012,24 @@ const EVENTS = {
   },
   enemyAttack: (m) => {
     const enemy = enemies.get(m.id);
-    if (enemy) {
-      // анимация атаки (встряска)
-      enemy.group.position.y += 0.2;
-      setTimeout(() => { if (enemy.group) enemy.group.position.y -= 0.2; }, 200);
-      // визуальный эффект у цели (если цель игрок)
-      if (m.targetId === myId) {
+    if (!enemy) return;
+    // анимация атаки (встряска)
+    enemy.group.position.y += 0.2;
+    setTimeout(() => { if (enemy.group) enemy.group.position.y -= 0.2; }, 200);
+    // если цель – наш игрок, проверяем расстояние до врага
+    if (m.targetId === myId) {
+      const dist = enemy.group.position.distanceTo(camera.position);
+      if (dist < 10) { // если враг рядом – показываем урон
         damageFlash();
         spawnParticles(camera.position.x, camera.position.y - 0.5, camera.position.z, 0xff6666, 20, 1.5, 0.8);
-      } else {
-        const targetPlayer = remotePlayers.get(m.targetId);
-        if (targetPlayer) {
-          const pos = targetPlayer.group.position;
-          spawnParticles(pos.x, pos.y + 1, pos.z, 0xff6666, 20, 1.5, 0.8);
-          flashPlayerModel(targetPlayer.group, 200);
-        }
+      }
+      // если враг далеко – не показываем визуал (но урон на сервере всё равно может быть, если там ошибка)
+    } else {
+      const targetPlayer = remotePlayers.get(m.targetId);
+      if (targetPlayer) {
+        const pos = targetPlayer.group.position;
+        spawnParticles(pos.x, pos.y + 1, pos.z, 0xff6666, 20, 1.5, 0.8);
+        flashPlayerModel(targetPlayer.group, 200);
       }
     }
   },
@@ -1112,7 +1060,6 @@ net.on('init', (m) => {
   if (m.zones) m.zones.forEach(z => EVENTS.zoneSpawn(z));
   if (m.timeSlowZones) m.timeSlowZones.forEach(z => EVENTS.timeSlowZone(z));
 
-  // ========== СПАВН СУЩЕСТВУЮЩИХ ВРАГОВ (ENEMY SYSTEM) ==========
   if (m.enemies) {
     for (const e of m.enemies) {
       spawnEnemy(e.id, e.type, e.x, e.y, e.z, e.health, e.maxHealth);
@@ -1547,7 +1494,6 @@ bindMobileButton('btn-attack', () => {
   if (!combatMode) return;
   if (spellQueue.length) castSpell('left');
   else {
-    // Сначала проверяем врагов
     const enemyHit = raycastEnemy(4.5);
     if (enemyHit) {
       net.send('attackEnemy', { target: enemyHit.id });
@@ -1574,7 +1520,6 @@ bindMobileButton('btn-settings', () => { toggleSettings(true); });
 bindMobileButton('btn-combat', () => { combatMode = !combatMode; spellQueue.length = 0; refreshQueueUI(); ringEl.classList.toggle('combat', combatMode); });
 bindMobileButton('btn-break', () => {
   if (combatMode) {
-    // атака по врагу или игроку или заклинание
     const enemyHit = raycastEnemy(4.5);
     if (enemyHit) {
       net.send('attackEnemy', { target: enemyHit.id });
@@ -1926,7 +1871,6 @@ function raycastPlayers(maxDist) {
   return best;
 }
 
-// ========== Рейкаст по врагам (ENEMY SYSTEM) ==========
 function raycastEnemy(maxDist) {
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
@@ -1934,7 +1878,6 @@ function raycastEnemy(maxDist) {
   let closest = null;
   let bestDist = Infinity;
   for (const [id, e] of enemies) {
-    // используем простую проверку сферой/кубом
     const box = new THREE.Box3().setFromObject(e.group);
     const ray = new THREE.Ray(origin, dir);
     const hitPoint = new THREE.Vector3();
@@ -2138,7 +2081,6 @@ document.addEventListener('mousedown', (e) => {
 
   if (combatMode) {
     if (e.button === 0) {
-      // атака по врагу, игроку или заклинание
       const enemyHit = raycastEnemy(4.5);
       if (enemyHit) {
         net.send('attackEnemy', { target: enemyHit.id });
@@ -2154,7 +2096,6 @@ document.addEventListener('mousedown', (e) => {
 
   const hit = raycastBlock(5);
   if (e.button === 0) {
-    // сначала враг
     const enemyHit = raycastEnemy(4.5);
     if (enemyHit) {
       net.send('attackEnemy', { target: enemyHit.id });
@@ -2200,12 +2141,11 @@ function animate(now) {
     if (ready && !chatFocused && !settingsOpen && !spellBookOpen) updatePlayer(dt);
     updateRemotePlayers(dt);
 
-    // ========== Интерполяция врагов (ENEMY SYSTEM) ==========
+    // Интерполяция врагов
     const lerpFactor = 1 - Math.pow(0.0001, dt);
     for (const enemy of enemies.values()) {
       enemy.group.position.lerp(enemy.targetPos, lerpFactor);
     }
-    updateHealthBars();
 
     for (const pr of projectiles.values()) {
       if (pr.gravity || pr.kind === 'meteor') pr.vel.y -= (pr.kind === 'meteor' ? 10 : 20) * dt;
