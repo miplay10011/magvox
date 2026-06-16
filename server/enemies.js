@@ -1,5 +1,4 @@
 // enemies.js
-// Константы направлений
 const AIR = 0;
 
 export class Enemy {
@@ -12,7 +11,7 @@ export class Enemy {
         this.z = z;
         this.health = type.health;
         this.maxHealth = type.health;
-        this.target = null;          // цель (игрок)
+        this.target = null;
         this.lastAttack = 0;
         this.lastDamageTime = 0;
         this.velocity = { x: 0, y: 0, z: 0 };
@@ -25,7 +24,6 @@ export class Enemy {
     update(dt, players, getBlock, getHeight) {
         if (this.health <= 0) return;
 
-        // Поиск ближайшего игрока в радиусе followRange
         if (!this.target || !players.has(this.target.id)) {
             this.acquireTarget(players);
         }
@@ -54,26 +52,22 @@ export class Enemy {
             this.y += this.velocity.y * dt;
             this.resolveVerticalCollision(getBlock);
         } else {
-            // летающий – держится на высоте terrainHeight + 2
             const groundY = getHeight(this.x, this.z);
             this.y = groundY + 2;
             this.velocity.y = 0;
         }
 
-        // Горизонтальное движение
         let moveX = (this.velocity.x + this.knockback.x) * dt;
         let moveZ = (this.velocity.z + this.knockback.z) * dt;
         this.x += moveX;
         this.z += moveZ;
         this.resolveHorizontalCollision(getBlock);
 
-        // Затухание
         this.velocity.x *= 0.9;
         this.velocity.z *= 0.9;
         this.knockback.x *= 0.8;
         this.knockback.z *= 0.8;
 
-        // Границы мира
         this.x = Math.max(0.5, Math.min(1000, this.x));
         this.z = Math.max(0.5, Math.min(1000, this.z));
         this.y = Math.max(1, Math.min(200, this.y));
@@ -116,32 +110,26 @@ export class Enemy {
         if (now - this.lastAttack < this.type.attackCooldown * 1000) return;
         this.lastAttack = now;
 
-        if (this.type.ranged) {
-            // дальняя атака: стреляем снарядом через магическую систему
-            this.manager.shootProjectile(this, this.target);
-        } else {
-            // ближняя атака
-            const dmg = this.type.damage;
-            const player = this.manager.players.get(this.target.id);
-            if (player && this.distanceTo(player) < this.type.attackRange) {
-                this.manager.applyDamageToPlayer(this.target.id, dmg, {
-                    ax: this.x, az: this.z,
-                    kb: this.type.knockback,
-                    attackerId: null,
-                    weapon: this.type.name
-                });
-                // эффекты при ударе
-                if (this.type.effects) {
-                    for (const [eff, dur] of Object.entries(this.type.effects)) {
-                        this.manager.addEffectToPlayer(this.target.id, eff, dur, 1);
-                    }
+        // Все враги теперь используют единую ближнюю атаку с проверкой дистанции
+        const dmg = this.type.damage;
+        const player = this.manager.players.get(this.target.id);
+        if (player && this.distanceTo(player) < this.type.attackRange) {
+            this.manager.applyDamageToPlayer(this.target.id, dmg, {
+                ax: this.x, az: this.z,
+                kb: this.type.knockback,
+                attackerId: null,
+                weapon: this.type.name
+            });
+            if (this.type.effects) {
+                for (const [eff, dur] of Object.entries(this.type.effects)) {
+                    this.manager.addEffectToPlayer(this.target.id, eff, dur, 1);
                 }
-                this.manager.broadcast('enemyAttack', {
-                    id: this.id,
-                    targetId: this.target.id,
-                    type: this.type.id
-                });
             }
+            this.manager.broadcast('enemyAttack', {
+                id: this.id,
+                targetId: this.target.id,
+                type: this.type.id
+            });
         }
     }
 
@@ -208,7 +196,7 @@ export class Enemy {
     }
 }
 
-// ТИПЫ ВРАГОВ (легко добавлять новые)
+// ТИПЫ ВРАГОВ – все теперь ближние (проверка дистанции)
 export const ENEMY_TYPES = {
     zombie: {
         id: 'zombie',
@@ -221,7 +209,6 @@ export const ENEMY_TYPES = {
         attackCooldown: 1.0,
         knockback: 6,
         flying: false,
-        ranged: false,
         effects: { weakness: 5 }
     },
     skeleton: {
@@ -230,13 +217,11 @@ export const ENEMY_TYPES = {
         health: 18,
         damage: 6,
         speed: 2.2,
-        attackRange: 12,
+        attackRange: 15,        // дальняя атака с проверкой дистанции
         followRange: 25,
         attackCooldown: 1.5,
         knockback: 3,
         flying: false,
-        ranged: true,
-        projectileElements: ['fire', 'fire'],
         effects: {}
     },
     creeper: {
@@ -250,7 +235,6 @@ export const ENEMY_TYPES = {
         attackCooldown: 2.0,
         knockback: 12,
         flying: false,
-        ranged: false,
         explosive: true,
         explosionRadius: 4,
         effects: {}
@@ -266,7 +250,6 @@ export const ENEMY_TYPES = {
         attackCooldown: 0.8,
         knockback: 2,
         flying: true,
-        ranged: false,
         effects: { slow: 3, blind: 2 }
     },
     fireElemental: {
@@ -280,8 +263,6 @@ export const ENEMY_TYPES = {
         attackCooldown: 1.2,
         knockback: 5,
         flying: false,
-        ranged: true,
-        projectileElements: ['fire', 'fire', 'air'],
         effects: { burning: 4 }
     }
 };
@@ -303,7 +284,6 @@ export class EnemyManager {
 
     update(dt) {
         const now = Date.now();
-        // Обновление каждого врага
         for (const enemy of this.enemies.values()) {
             enemy.update(dt, this.players, this.getBlock, this.getHeight);
             if (!enemy.lastSync || now - enemy.lastSync > 200) {
@@ -319,7 +299,6 @@ export class EnemyManager {
             if (enemy.health <= 0) this.destroyEnemy(enemy.id);
         }
 
-        // Спавн новых врагов
         if (this.enemies.size < this.maxEnemies) {
             if (this.spawnCooldown <= 0) {
                 this.trySpawnEnemy();
@@ -373,7 +352,6 @@ export class EnemyManager {
         if (!enemy) return;
         this.broadcast('enemyDeath', { id });
         this.enemies.delete(id);
-        // Можно добавить дроп предметов
     }
 
     damageEnemy(id, amount, sourceX, sourceZ, knockback = 5) {
@@ -394,29 +372,6 @@ export class EnemyManager {
         }
         this.broadcast('enemyHp', { id, health: Math.max(0, enemy.health), maxHealth: enemy.maxHealth });
         if (enemy.health <= 0) this.destroyEnemy(id);
-    }
-
-    shootProjectile(enemy, target) {
-        // Создаём фейкового кастера (врага) и используем магическую систему
-        const fakeCaster = {
-            id: `enemy_${enemy.id}`,
-            x: enemy.x,
-            y: enemy.y + 1.2,
-            z: enemy.z,
-            yaw: Math.atan2(target.x - enemy.x, target.z - enemy.z)
-        };
-        const dirX = target.x - enemy.x;
-        const dirZ = target.z - enemy.z;
-        const len = Math.hypot(dirX, dirZ);
-        const dir = [dirX / len, 0, dirZ / len];
-        if (this.magic && this.magic.castProjectile) {
-            this.magic.castProjectile(fakeCaster, enemy.type.projectileElements, dir, { x: enemy.x, y: enemy.y+1.2, z: enemy.z }, enemy.yaw, 'left');
-        } else {
-            // fallback: прямой урон
-            this.applyDamageToPlayer(target.id, enemy.type.damage, {
-                ax: enemy.x, az: enemy.z, kb: 0, attackerId: null, weapon: enemy.type.name
-            });
-        }
     }
 
     getEnemyData() {
