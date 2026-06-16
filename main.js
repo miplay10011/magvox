@@ -556,6 +556,8 @@ const remotePlayers = new Map();
 
 // ========== ВРАГИ (ENEMY SYSTEM) ==========
 let enemies = new Map();          // id -> { group, targetPos, health, maxHealth, type, lastSync }
+let showEnemyHitboxes = false;
+const enemyHitboxMeshes = new Map(); // id -> THREE.LineSegments (wireframe box)
 
 // Создание модели врага по типу
 function createEnemyModel(type, health) {
@@ -580,6 +582,45 @@ function createEnemyModel(type, health) {
     return group;
 }
 
+function createEnemyHitbox(enemyId, group) {
+    const size = new THREE.Vector3(0.8, 1.6, 0.8);
+    const geo = new THREE.BoxGeometry(size.x, size.y, size.z);
+    const edges = new THREE.EdgesGeometry(geo);
+    const mat = new THREE.LineBasicMaterial({ color: 0xff00ff, linewidth: 1, depthTest: false });
+    const wireframe = new THREE.LineSegments(edges, mat);
+    wireframe.position.copy(group.position);
+    wireframe.position.y += 0.8; // центрируем по модели
+    scene.add(wireframe);
+    enemyHitboxMeshes.set(enemyId, wireframe);
+    wireframe.visible = showEnemyHitboxes;
+    return wireframe;
+}
+
+function updateEnemyHitbox(enemyId, group) {
+    const mesh = enemyHitboxMeshes.get(enemyId);
+    if (mesh) {
+        mesh.position.copy(group.position);
+        mesh.position.y += 0.8;
+    }
+}
+
+function removeEnemyHitbox(enemyId) {
+    const mesh = enemyHitboxMeshes.get(enemyId);
+    if (mesh) {
+        scene.remove(mesh);
+        mesh.geometry.dispose();
+        mesh.material.dispose();
+        enemyHitboxMeshes.delete(enemyId);
+    }
+}
+
+function toggleEnemyHitboxes(show) {
+    showEnemyHitboxes = show;
+    for (const [id, mesh] of enemyHitboxMeshes) {
+        mesh.visible = show;
+    }
+}
+
 function spawnEnemy(id, type, x, y, z, health, maxHealth) {
     if (enemies.has(id)) return;
     const group = createEnemyModel(type, health);
@@ -587,11 +628,13 @@ function spawnEnemy(id, type, x, y, z, health, maxHealth) {
     scene.add(group);
     const targetPos = new THREE.Vector3(x, y, z);
     enemies.set(id, { group, targetPos, health, maxHealth, type, lastSync: Date.now() });
+    createEnemyHitbox(id, group);
 }
 
 function removeEnemy(id) {
     const enemy = enemies.get(id);
     if (enemy) {
+        removeEnemyHitbox(id);
         scene.remove(enemy.group);
         enemies.delete(id);
     }
@@ -603,6 +646,7 @@ function updateEnemyPosition(id, x, y, z, yaw) {
         enemy.targetPos.set(x, y, z);
         if (yaw !== undefined) enemy.group.rotation.y = yaw;
         enemy.lastSync = Date.now();
+        updateEnemyHitbox(id, enemy.group);
     }
 }
 
@@ -1617,6 +1661,10 @@ document.addEventListener('keydown', (e) => {
     else openSpellBook();
     return;
   }
+  if (e.code === 'KeyO' && !chatFocused && !settingsOpen && !spellBookOpen) {
+      e.preventDefault();
+      toggleEnemyHitboxes(!showEnemyHitboxes);
+  }
   if (e.code === 'Escape' && spellBookOpen) {
     closeSpellBook();
     e.preventDefault();
@@ -2145,6 +2193,10 @@ function animate(now) {
     const lerpFactor = 1 - Math.pow(0.0001, dt);
     for (const enemy of enemies.values()) {
       enemy.group.position.lerp(enemy.targetPos, lerpFactor);
+    }
+    // Обновление хитбоксов врагов
+    for (const [id, enemy] of enemies) {
+        updateEnemyHitbox(id, enemy.group);
     }
 
     for (const pr of projectiles.values()) {
