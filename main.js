@@ -562,21 +562,20 @@ const enemyHitboxMeshes = new Map(); // id -> THREE.LineSegments (wireframe box)
 // Создание модели врага по типу
 function createEnemyModel(type, health) {
     const group = new THREE.Group();
-    let color = 0x88aa88;
-    switch (type) {
-        case 'zombie': color = 0x5a6b4a; break;
-        case 'skeleton': color = 0xcdcdcd; break;
-        case 'creeper': color = 0x5f9e6e; break;
-        case 'ghost': color = 0xddddff; break;
-        case 'fireElemental': color = 0xff6633; break;
-        default: color = 0xaa8866;
-    }
-    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.6 });
+    const colors = {
+        zombie: 0x5a6b4a,
+        skeleton: 0xcdcdcd,
+        creeper: 0x5f9e6e,
+        ghost: 0xddddff,
+        fireElemental: 0xff6633
+    };
+    const color = colors[type] || 0xaa8866;
+    const mat = new THREE.MeshBasicMaterial({ color });
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.2, 0.8), mat);
     body.position.y = 0.6;
     group.add(body);
-    const headMat = new THREE.MeshStandardMaterial({ color: color });
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), headMat);
+    const headMat = new THREE.MeshBasicMaterial({ color: color });
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), headMat);
     head.position.y = 1.2;
     group.add(head);
     return group;
@@ -1134,10 +1133,18 @@ net.on('init', (m) => {
   if (m.timeSlowZones) m.timeSlowZones.forEach(z => EVENTS.timeSlowZone(z));
   console.log('Начальные враги:', m.enemies);
   if (m.enemies) {
-    for (const e of m.enemies) {
-      spawnEnemy(e.id, e.type, e.x, e.y, e.z, e.health, e.maxHealth);
-    }
-  }
+    // Небольшая задержка, чтобы сцена успела подготовиться
+    setTimeout(() => {
+        for (const e of m.enemies) {
+            try {
+                spawnEnemy(e.id, e.type, e.x, e.y, e.z, e.health, e.maxHealth);
+            } catch (err) {
+                console.error('Ошибка спавна врага:', err, e);
+            }
+        }
+        console.log(`Всего врагов после инициализации: ${enemies.size}`);
+    }, 50);
+}
 
   setStatus(`онлайн · игроков: ${remotePlayers.size}`);
 });
@@ -2219,14 +2226,14 @@ function animate(now) {
     updateRemotePlayers(dt);
 
     // Интерполяция врагов
-    const lerpFactor = 1 - Math.pow(0.0001, dt);
-    for (const enemy of enemies.values()) {
-      enemy.group.position.lerp(enemy.targetPos, lerpFactor);
+    const lerpFactor = 1 - Math.pow(0.01, dt); // более быстрая интерполяция
+for (const enemy of enemies.values()) {
+    enemy.group.position.lerp(enemy.targetPos, lerpFactor);
+    // Если враг сильно отстаёт, принудительно ставим в целевую позицию
+    if (enemy.group.position.distanceTo(enemy.targetPos) > 5) {
+        enemy.group.position.copy(enemy.targetPos);
     }
-    // Обновление хитбоксов врагов
-    for (const [id, enemy] of enemies) {
-        updateEnemyHitbox(id, enemy.group);
-    }
+}
 
     for (const pr of projectiles.values()) {
       if (pr.gravity || pr.kind === 'meteor') pr.vel.y -= (pr.kind === 'meteor' ? 10 : 20) * dt;

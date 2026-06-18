@@ -19,7 +19,10 @@ export class Enemy {
         this.knockback = { x: 0, z: 0 };
         this.yaw = 0;
         this.lastSync = 0;
+        this.width = 0.7;
+        this.height = 1.6;
         this.stuckTimer = 0;
+        this.prevPos = { x, z };
     }
 
     update(dt, players, getBlock, getHeight) {
@@ -32,13 +35,13 @@ export class Enemy {
         if (this.target) {
             const dx = this.target.x - this.x;
             const dz = this.target.z - this.z;
-            const distSq = dx*dx + dz*dz;
+            const dist = Math.hypot(dx, dz);
             const attackRange = this.type.attackRange;
             const followRange = this.type.followRange;
 
-            if (distSq <= attackRange * attackRange) {
+            if (dist <= attackRange) {
                 this.attackTarget();
-            } else if (distSq <= followRange * followRange) {
+            } else if (dist <= followRange) {
                 this.moveTowards(dx, dz, dt);
             } else {
                 this.randomWalk(dt);
@@ -57,8 +60,8 @@ export class Enemy {
             this.velocity.y = 0;
         }
 
-        let moveX = (this.velocity.x + this.knockback.x) * dt;
-        let moveZ = (this.velocity.z + this.knockback.z) * dt;
+        const moveX = (this.velocity.x + this.knockback.x) * dt;
+        const moveZ = (this.velocity.z + this.knockback.z) * dt;
         this.x += moveX;
         this.z += moveZ;
         this.resolveHorizontalCollision(getBlock);
@@ -79,19 +82,33 @@ export class Enemy {
                 x: this.x,
                 y: this.y,
                 z: this.z,
-                yaw: this.yaw || 0
+                yaw: this.yaw
             });
         }
+
+        const moved = Math.hypot(this.x - this.prevPos.x, this.z - this.prevPos.z);
+        if (moved < 0.01) {
+            this.stuckTimer += dt;
+            if (this.stuckTimer > 2) {
+                this.y += 0.5;
+                this.stuckTimer = 0;
+            }
+        } else {
+            this.stuckTimer = 0;
+        }
+        this.prevPos.x = this.x;
+        this.prevPos.z = this.z;
     }
 
     acquireTarget(players) {
         let closest = null;
         let bestDist = Infinity;
+        const range = this.type.followRange;
         for (const [id, p] of players) {
             const dx = p.x - this.x;
             const dz = p.z - this.z;
             const distSq = dx*dx + dz*dz;
-            if (distSq < bestDist && distSq < this.type.followRange * this.type.followRange) {
+            if (distSq < bestDist && distSq < range * range) {
                 bestDist = distSq;
                 closest = { id, x: p.x, z: p.z, isPlayer: true };
             }
@@ -102,47 +119,52 @@ export class Enemy {
     moveTowards(dx, dz, dt) {
         const len = Math.hypot(dx, dz);
         if (len < 0.01) return;
+        const speed = this.type.speed;
         const normX = dx / len;
         const normZ = dz / len;
-        const speed = this.type.speed;
-        this.velocity.x = normX * speed;
-        this.velocity.z = normZ * speed;
+        this.velocity.x += (normX * speed - this.velocity.x) * 0.2;
+        this.velocity.z += (normZ * speed - this.velocity.z) * 0.2;
         this.yaw = Math.atan2(normX, normZ);
     }
 
     randomWalk(dt) {
         if (Math.random() < 0.02) {
             const angle = Math.random() * Math.PI * 2;
-            this.velocity.x = Math.cos(angle) * this.type.speed * 0.3;
-            this.velocity.z = Math.sin(angle) * this.type.speed * 0.3;
+            this.velocity.x += Math.cos(angle) * this.type.speed * 0.3;
+            this.velocity.z += Math.sin(angle) * this.type.speed * 0.3;
         }
     }
 
     attackTarget() {
         const now = Date.now();
         if (now - this.lastAttack < this.type.attackCooldown * 1000) return;
-        this.lastAttack = now;
 
-        const dmg = this.type.damage;
         const player = this.manager.players.get(this.target.id);
-        if (player && this.distanceTo(player) < this.type.attackRange) {
-            this.manager.applyDamageToPlayer(this.target.id, dmg, {
-                ax: this.x, az: this.z,
-                kb: this.type.knockback,
-                attackerId: null,
-                weapon: this.type.name
-            });
-            if (this.type.effects) {
-                for (const [eff, dur] of Object.entries(this.type.effects)) {
-                    this.manager.addEffectToPlayer(this.target.id, eff, dur, 1);
-                }
+        if (!player) return;
+
+        const dist = this.distanceTo(player);
+        if (dist >= this.type.attackRange) return;
+
+        this.lastAttack = now;
+        const dmg = this.type.damage;
+        this.manager.applyDamageToPlayer(this.target.id, dmg, {
+            ax: this.x, az: this.z,
+            kb: this.type.knockback,
+            attackerId: null,
+            weapon: this.type.name
+        });
+
+        if (this.type.effects) {
+            for (const [eff, dur] of Object.entries(this.type.effects)) {
+                this.manager.addEffectToPlayer(this.target.id, eff, dur, 1);
             }
-            this.manager.broadcast('enemyAttack', {
-                id: this.id,
-                targetId: this.target.id,
-                type: this.type.id
-            });
         }
+
+        this.manager.broadcast('enemyAttack', {
+            id: this.id,
+            targetId: this.target.id,
+            type: this.type.id
+        });
     }
 
     distanceTo(entity) {
@@ -152,13 +174,14 @@ export class Enemy {
     }
 
     resolveVerticalCollision(getBlock) {
-        const half = 0.4;
+        const half = this.width / 2;
         const feetY = Math.floor(this.y);
-        const headY = Math.floor(this.y + 1.6);
+        const headY = Math.floor(this.y + this.height);
         const minX = Math.floor(this.x - half);
         const maxX = Math.floor(this.x + half);
         const minZ = Math.floor(this.z - half);
         const maxZ = Math.floor(this.z + half);
+
         for (let y = feetY; y <= headY; y++) {
             for (let x = minX; x <= maxX; x++) {
                 for (let z = minZ; z <= maxZ; z++) {
@@ -168,7 +191,7 @@ export class Enemy {
                             this.onGround = true;
                             this.velocity.y = 0;
                         } else if (this.velocity.y > 0) {
-                            this.y = y - 1.6;
+                            this.y = y - this.height;
                             this.velocity.y = 0;
                         }
                         return;
@@ -180,13 +203,14 @@ export class Enemy {
     }
 
     resolveHorizontalCollision(getBlock) {
-        const half = 0.4;
+        const half = this.width / 2;
+        const feetY = Math.floor(this.y);
+        const headY = Math.floor(this.y + this.height);
         const minX = Math.floor(this.x - half);
         const maxX = Math.floor(this.x + half);
         const minZ = Math.floor(this.z - half);
         const maxZ = Math.floor(this.z + half);
-        const feetY = Math.floor(this.y);
-        const headY = Math.floor(this.y + 1.6);
+
         for (let y = feetY; y <= headY; y++) {
             for (let x = minX; x <= maxX; x++) {
                 for (let z = minZ; z <= maxZ; z++) {
@@ -200,6 +224,8 @@ export class Enemy {
                         } else {
                             this.z = (dz > 0 ? z + 1 + half : z - half);
                         }
+                        if (adx > adz) this.velocity.x = 0;
+                        else this.velocity.z = 0;
                         return;
                     }
                 }
@@ -293,24 +319,19 @@ export class EnemyManager {
     }
 
     update(dt) {
-        const now = Date.now();
         for (const enemy of this.enemies.values()) {
             enemy.update(dt, this.players, this.getBlock, this.getHeight);
             if (enemy.health <= 0) this.destroyEnemy(enemy.id);
         }
 
-        // Спавн новых врагов
-        if (this.enemies.size < this.maxEnemies) {
-            if (this.spawnCooldown <= 0) {
-                this.trySpawnEnemy();
-                this.spawnCooldown = 3;
-            } else {
-                this.spawnCooldown -= dt;
-            }
+        if (this.enemies.size < this.maxEnemies && this.spawnCooldown <= 0) {
+            this.trySpawnEnemy();
+            this.spawnCooldown = 3;
+        } else {
+            this.spawnCooldown -= dt;
         }
 
-        // Лог каждые 5 секунд
-        if (!this._logTimer || Date.now() - this._logTimer > 5000) {
+        if (!this._logTimer || Date.now() - this._logTimer > 10000) {
             this._logTimer = Date.now();
             console.log(`[EnemyManager] Врагов: ${this.enemies.size}, игроков: ${this.players.size}`);
         }
@@ -320,6 +341,7 @@ export class EnemyManager {
         const playerList = [...this.players.values()];
         if (playerList.length === 0) return;
         const targetPlayer = playerList[Math.floor(Math.random() * playerList.length)];
+
         for (let attempt = 0; attempt < 30; attempt++) {
             const angle = Math.random() * Math.PI * 2;
             const dist = 15 + Math.random() * 25;
@@ -327,8 +349,9 @@ export class EnemyManager {
             const z = targetPlayer.z + Math.sin(angle) * dist;
             const groundY = this.getHeight(x, z);
             const y = groundY + 1;
-            if (this.getBlock(Math.floor(x), Math.floor(y), Math.floor(z)) === AIR &&
-                this.getBlock(Math.floor(x), Math.floor(y) + 1, Math.floor(z)) === AIR) {
+            const block1 = this.getBlock(Math.floor(x), Math.floor(y), Math.floor(z));
+            const block2 = this.getBlock(Math.floor(x), Math.floor(y) + 1, Math.floor(z));
+            if (block1 === AIR && block2 === AIR) {
                 const typeKeys = Object.keys(ENEMY_TYPES);
                 const randType = ENEMY_TYPES[typeKeys[Math.floor(Math.random() * typeKeys.length)]];
                 this.spawnEnemy(randType, x, y, z);
@@ -373,10 +396,8 @@ export class EnemyManager {
         const dz = enemy.z - sourceZ;
         const len = Math.hypot(dx, dz);
         if (len > 0.01) {
-            const normX = dx / len;
-            const normZ = dz / len;
-            enemy.knockback.x += normX * knockback;
-            enemy.knockback.z += normZ * knockback;
+            enemy.knockback.x += (dx / len) * knockback;
+            enemy.knockback.z += (dz / len) * knockback;
         }
         this.broadcast('enemyHp', { id, health: Math.max(0, enemy.health), maxHealth: enemy.maxHealth });
         if (enemy.health <= 0) this.destroyEnemy(id);

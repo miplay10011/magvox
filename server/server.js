@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { createMagicEngine } from '../magic.js';
-import { EnemyManager, ENEMY_TYPES } from './enemies.js';
+import { EnemyManager } from './enemies.js';
 
 process.on('uncaughtException', (err) => console.error('❌ Uncaught Exception:', err));
 
@@ -741,7 +741,6 @@ for (let cx = -25; cx <= 25; cx++) {
         else generateHouse(edits, centerX, centerZ, groundY);
       }
     }
-    // Кактусы в пустыне
     if (biome === 'desert' && Math.random() < 0.02) {
       const cactusHeight = 1 + Math.floor(Math.random() * 2);
       for (let h = 0; h < cactusHeight; h++) {
