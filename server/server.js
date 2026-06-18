@@ -756,9 +756,36 @@ function generateBamboo(editsMap, cx, cz, groundY) {
   }
 }
 
-// ==================== СУЩНОСТИ (добавлено) ====================
+// ==================== СУЩНОСТИ (полная версия с мобами) ====================
 let nextEntityId = 1;
 const entities = new Map();
+
+// Конфигурация мобов по умолчанию
+const MOB_TYPES = {
+  zombie: {
+    health: 30,
+    maxHealth: 30,
+    walkSpeed: 3.0,
+    damage: 3.0,
+    damageDistance: 2.0,
+    attackCooldown: 1.0,
+    width: 0.6,
+    height: 1.8,
+    color: 0x44aa44,
+  },
+  skeleton: {
+    health: 20,
+    maxHealth: 20,
+    walkSpeed: 4.0,
+    damage: 4.0,
+    damageDistance: 5.0,
+    attackCooldown: 1.5,
+    width: 0.6,
+    height: 1.8,
+    color: 0xcccccc,
+  },
+  // можно добавить другие
+};
 
 class Entity {
   constructor(type, x, y, z, data = {}) {
@@ -772,10 +799,61 @@ class Entity {
     this.vz = 0;
     this.yaw = 0;
     this.pitch = 0;
-    this.data = data;            // { color, model, itemId, ... }
-    this.hitboxRadius = data.hitboxRadius || 0.5;
     this.alive = true;
+
+    // Поля для мобов
+    if (type === 'mob') {
+      // Парсим data (может быть объект или строка)
+      let mobData = data;
+      if (typeof data === 'string') {
+        mobData = parseMobData(data);
+      }
+      // Сливаем с конфигом по типу
+      const mobType = mobData.mobType || 'zombie';
+      const defaults = MOB_TYPES[mobType] || MOB_TYPES.zombie;
+      this.mobType = mobType;
+      this.hp = mobData.health ?? defaults.health;
+      this.maxHp = mobData.maxHealth ?? defaults.maxHealth;
+      this.walkSpeed = mobData.walkSpeed ?? defaults.walkSpeed;
+      this.damage = mobData.damage ?? defaults.damage;
+      this.damageDistance = mobData.damageDistance ?? defaults.damageDistance;
+      this.attackCooldown = mobData.attackCooldown ?? defaults.attackCooldown;
+      this.width = mobData.width ?? defaults.width;
+      this.height = mobData.height ?? defaults.height;
+      this.color = mobData.color ?? defaults.color;
+      // Таймер атаки
+      this.lastAttackTime = 0;
+      // Для движения
+      this.targetX = x;
+      this.targetZ = z;
+      // Для коллизии – временные переменные
+      this.onGround = false;
+    } else {
+      // Для тестовых кубов и других типов
+      this.data = data;
+      this.hitboxRadius = data.hitboxRadius || 0.5;
+    }
   }
+}
+
+// Парсер строки вида "mob:zombie,health:30f,max_health:30,walk_speed:3f,damage:3f,damage_distance:5f"
+function parseMobData(str) {
+  const result = {};
+  const parts = str.split(',');
+  for (const part of parts) {
+    const [key, value] = part.split(':');
+    if (!key || value === undefined) continue;
+    const trimmedKey = key.trim();
+    let trimmedVal = value.trim();
+    // Убираем суффикс 'f' для чисел
+    let numVal = parseFloat(trimmedVal);
+    if (!isNaN(numVal)) {
+      result[trimmedKey] = numVal;
+    } else {
+      result[trimmedKey] = trimmedVal;
+    }
+  }
+  return result;
 }
 
 function spawnEntity(type, x, y, z, data = {}) {
@@ -789,7 +867,14 @@ function spawnEntity(type, x, y, z, data = {}) {
     z: entity.z,
     yaw: entity.yaw,
     pitch: entity.pitch,
-    data: entity.data,
+    data: entity.type === 'mob' ? {
+      mobType: entity.mobType,
+      hp: entity.hp,
+      maxHp: entity.maxHp,
+      color: entity.color,
+      width: entity.width,
+      height: entity.height,
+    } : entity.data,
   });
   return entity.id;
 }
@@ -802,47 +887,227 @@ function despawnEntity(id) {
   broadcast('entityDespawn', { id });
 }
 
-function updateEntity(entity, dt) {
-  // Пример движения по кругу (для типа test_cube)
-  if (entity.type === 'test_cube') {
-    const speed = 1.5;
-    const radius = 4;
-    if (!entity.data.angle) entity.data.angle = 0;
-    entity.data.angle += dt * speed;
-    if (!entity.data.centerX) {
-      entity.data.centerX = entity.x;
-      entity.data.centerY = entity.y;
-      entity.data.centerZ = entity.z;
-    }
-    entity.x = entity.data.centerX + Math.cos(entity.data.angle) * radius;
-    entity.z = entity.data.centerZ + Math.sin(entity.data.angle) * radius;
-    entity.y = entity.data.centerY + Math.sin(entity.data.angle * 0.5) * 0.5;
-    entity.yaw = entity.data.angle;
-    broadcast('entityUpdate', {
-      id: entity.id,
-      x: entity.x,
-      y: entity.y,
-      z: entity.z,
-      yaw: entity.yaw,
-      pitch: entity.pitch,
-    });
+// Нанесение урона сущности
+function damageEntity(entityId, dmg, src = {}) {
+  const entity = entities.get(entityId);
+  if (!entity || !entity.alive || entity.type !== 'mob') return;
+  if (dmg <= 0) return;
+  // Применяем урон
+  entity.hp -= dmg;
+  // Можно добавить эффекты (например, отбрасывание) позже
+  if (entity.hp <= 0) {
+    // Моб умирает
+    despawnEntity(entityId);
+    broadcast('systemMessage', { message: `Моб ${entity.mobType} убит!` });
+    // Эффект смерти (частицы) – можно добавить позже
+  } else {
+    // Отправляем обновление HP (можно добавить событие)
+    broadcast('entityHp', { id: entityId, hp: entity.hp, maxHp: entity.maxHp });
   }
 }
 
+// Коллизия сущности с блоками (упрощённая, как у игрока)
+function moveEntityWithCollision(entity, dx, dz, dt) {
+  const halfW = entity.width / 2;
+  const height = entity.height;
+
+  // Пробуем движение по X
+  const newX = entity.x + dx * dt;
+  // Проверяем столкновение по X
+  const checkX = (xOff) => {
+    const bx = Math.floor(newX + xOff);
+    const by = Math.floor(entity.y);
+    const bz = Math.floor(entity.z);
+    // Проверяем блоки на уровне ног и головы
+    for (let yOff = 0; yOff < height; yOff += 0.9) {
+      const byCheck = Math.floor(entity.y + yOff);
+      if (world.getBlock(bx, byCheck, bz) !== 0) return true;
+    }
+    return false;
+  };
+  if (!checkX(-halfW) && !checkX(halfW)) {
+    entity.x = newX;
+  } else {
+    entity.vx = 0; // сбрасываем скорость
+  }
+
+  // Пробуем движение по Z
+  const newZ = entity.z + dz * dt;
+  const checkZ = (zOff) => {
+    const bx = Math.floor(entity.x);
+    const by = Math.floor(entity.y);
+    const bz = Math.floor(newZ + zOff);
+    for (let yOff = 0; yOff < height; yOff += 0.9) {
+      const byCheck = Math.floor(entity.y + yOff);
+      if (world.getBlock(bx, byCheck, bz) !== 0) return true;
+    }
+    return false;
+  };
+  if (!checkZ(-halfW) && !checkZ(halfW)) {
+    entity.z = newZ;
+  } else {
+    entity.vz = 0;
+  }
+
+  // Корректируем Y – ставим на поверхность
+  const groundY = getCachedHeight(Math.floor(entity.x), Math.floor(entity.z));
+  entity.y = groundY + 0.1; // чуть выше земли
+  entity.onGround = true;
+}
+
+// Обновление логики моба
+function updateMob(entity, dt) {
+  if (entity.type !== 'mob') return;
+
+  // 1. Поиск ближайшего игрока в радиусе 20
+  let nearestPlayer = null;
+  let minDist = Infinity;
+  for (const [id, p] of players) {
+    const dx = p.x - entity.x;
+    const dz = p.z - entity.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 20 && dist < minDist) {
+      minDist = dist;
+      nearestPlayer = { id, x: p.x, y: p.y, z: p.z };
+    }
+  }
+
+  if (!nearestPlayer) {
+    // Нет игроков – стоим на месте
+    entity.vx = 0;
+    entity.vz = 0;
+    return;
+  }
+
+  // 2. Если игрок в пределах дистанции атаки – атакуем
+  const attackDist = entity.damageDistance;
+  if (minDist < attackDist) {
+    // Поворачиваемся к игроку
+    entity.yaw = Math.atan2(nearestPlayer.x - entity.x, nearestPlayer.z - entity.z);
+    // Атака с кулдауном
+    const now = Date.now() / 1000;
+    if (now - entity.lastAttackTime >= entity.attackCooldown) {
+      entity.lastAttackTime = now;
+      // Наносим урон игроку
+      applyDamage(nearestPlayer.id, entity.damage, {
+        ax: entity.x,
+        az: entity.z,
+        kb: 1, // небольшой отброс
+        attackerId: null, // моб не имеет id игрока
+        weapon: `моб ${entity.mobType}`,
+      });
+      broadcast('systemMessage', { message: `Моб ${entity.mobType} атаковал ${players.get(nearestPlayer.id)?.nickname || 'игрока'}` });
+    }
+    // Не двигаемся во время атаки
+    entity.vx = 0;
+    entity.vz = 0;
+    return;
+  }
+
+  // 3. Иначе двигаемся к игроку
+  const dx = nearestPlayer.x - entity.x;
+  const dz = nearestPlayer.z - entity.z;
+  const dist = Math.hypot(dx, dz);
+  if (dist < 0.1) {
+    entity.vx = 0;
+    entity.vz = 0;
+    return;
+  }
+  const speed = entity.walkSpeed;
+  // Нормализуем направление
+  const normDx = dx / dist;
+  const normDz = dz / dist;
+  // Запоминаем скорость для коллизии
+  entity.vx = normDx * speed;
+  entity.vz = normDz * speed;
+  // Поворачиваемся
+  entity.yaw = Math.atan2(dx, dz);
+
+  // Применяем движение с коллизией
+  moveEntityWithCollision(entity, entity.vx, entity.vz, dt);
+}
+
+// Главная функция обновления всех сущностей
 function updateEntities(dt) {
   for (const entity of entities.values()) {
-    if (entity.alive) updateEntity(entity, dt);
+    if (!entity.alive) continue;
+    if (entity.type === 'mob') {
+      updateMob(entity, dt);
+    } else if (entity.type === 'test_cube') {
+      // Старое движение по кругу для тестовых кубов (оставляем для примера)
+      const speed = 1.5;
+      const radius = 4;
+      if (!entity.data.angle) entity.data.angle = 0;
+      entity.data.angle += dt * speed;
+      if (!entity.data.centerX) {
+        entity.data.centerX = entity.x;
+        entity.data.centerY = entity.y;
+        entity.data.centerZ = entity.z;
+      }
+      entity.x = entity.data.centerX + Math.cos(entity.data.angle) * radius;
+      entity.z = entity.data.centerZ + Math.sin(entity.data.angle) * radius;
+      entity.y = entity.data.centerY + Math.sin(entity.data.angle * 0.5) * 0.5;
+      entity.yaw = entity.data.angle;
+      broadcast('entityUpdate', {
+        id: entity.id,
+        x: entity.x,
+        y: entity.y,
+        z: entity.z,
+        yaw: entity.yaw,
+        pitch: entity.pitch,
+      });
+    }
+    // Для других типов можно добавить логику
   }
 }
 
-// Создаём тестовые сущности при старте
-for (let i = 0; i < 5; i++) {
-  const angle = (i / 5) * Math.PI * 2;
-  const radius = 6 + Math.random() * 4;
-  const x = Math.cos(angle) * radius;
-  const z = Math.sin(angle) * radius;
-  const y = getCachedHeight(Math.floor(x), Math.floor(z)) + 2;
-  spawnEntity('test_cube', x, y, z, { color: 0xffaa44 + (i * 0x112233) });
+// ========== Дополнительные функции для управления мобами ==========
+
+// Создание моба с параметрами (строка или объект)
+function spawnMob(x, y, z, mobData) {
+  if (typeof mobData === 'string') {
+    mobData = parseMobData(mobData);
+  }
+  if (!mobData.mobType) mobData.mobType = 'zombie';
+  return spawnEntity('mob', x, y, z, mobData);
+}
+
+// Команда для спавна моба через чат (на сервере)
+function handleSpawnMobCommand(senderId, args) {
+  const player = players.get(senderId);
+  if (!player) return;
+  const x = player.x + 2;
+  const z = player.z + 2;
+  const y = getCachedHeight(Math.floor(x), Math.floor(z)) + 1;
+  let mobData = 'mob:zombie,health:30,max_health:30,walk_speed:3,damage:3,damage_distance:2';
+  if (args.length > 0) {
+    mobData = args.join(' ');
+  }
+  const id = spawnMob(x, y, z, mobData);
+  broadcast('systemMessage', { message: `Игрок ${player.nickname} призвал моба (id ${id})` });
+}
+
+// ========== Инициализация тестовых мобов (заменяем старые кубы) ==========
+// Удаляем старые тестовые кубы и создаём мобов
+// Можно оставить для примера, но чтобы не мешали, закомментируем
+// for (let i = 0; i < 5; i++) {
+//   const angle = (i / 5) * Math.PI * 2;
+//   const radius = 6 + Math.random() * 4;
+//   const x = Math.cos(angle) * radius;
+//   const z = Math.sin(angle) * radius;
+//   const y = getCachedHeight(Math.floor(x), Math.floor(z)) + 2;
+//   spawnEntity('test_cube', x, y, z, { color: 0xffaa44 + (i * 0x112233) });
+// }
+
+// Создаём несколько мобов для теста
+const testMobs = [
+  { x: 5, z: 5, data: 'mob:zombie,health:30,walk_speed:2.5,damage:4' },
+  { x: -5, z: -5, data: 'mob:skeleton,health:20,walk_speed:4,damage:5,damage_distance:6' },
+  { x: 10, z: -5, data: 'mob:zombie,health:50,walk_speed:1.5,damage:6' },
+];
+for (const m of testMobs) {
+  const y = getCachedHeight(Math.floor(m.x), Math.floor(m.z)) + 1;
+  spawnMob(m.x, y, m.z, m.data);
 }
 
 // ==================== WebSocket СЕРВЕР ====================
