@@ -554,123 +554,6 @@ let myId = null;
 let myNickname = '';
 const remotePlayers = new Map();
 
-// ========== ВРАГИ (ENEMY SYSTEM) ==========
-let enemies = new Map();          // id -> { group, targetPos, health, maxHealth, type, lastSync }
-let showEnemyHitboxes = false;
-const enemyHitboxMeshes = new Map(); // id -> THREE.LineSegments (wireframe box)
-
-// Создание модели врага по типу
-function createEnemyModel(type, health) {
-    const group = new THREE.Group();
-    const colors = {
-        zombie: 0x5a6b4a,
-        skeleton: 0xcdcdcd,
-        creeper: 0x5f9e6e,
-        ghost: 0xddddff,
-        fireElemental: 0xff6633
-    };
-    const color = colors[type] || 0xaa8866;
-    const mat = new THREE.MeshBasicMaterial({ color });
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.2, 0.8), mat);
-    body.position.y = 0.6;
-    group.add(body);
-    const headMat = new THREE.MeshBasicMaterial({ color: color });
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), headMat);
-    head.position.y = 1.2;
-    group.add(head);
-    return group;
-}
-
-function createEnemyHitbox(enemyId, group) {
-    const size = new THREE.Vector3(0.8, 1.6, 0.8);
-    const geo = new THREE.BoxGeometry(size.x, size.y, size.z);
-    const edges = new THREE.EdgesGeometry(geo);
-    const mat = new THREE.LineBasicMaterial({ color: 0xff00ff, linewidth: 1, depthTest: false });
-    const wireframe = new THREE.LineSegments(edges, mat);
-    wireframe.position.copy(group.position);
-    wireframe.position.y += 0.8; // центрируем по модели
-    scene.add(wireframe);
-    enemyHitboxMeshes.set(enemyId, wireframe);
-    wireframe.visible = showEnemyHitboxes;
-    return wireframe;
-}
-
-function updateEnemyHitbox(enemyId, group) {
-    const mesh = enemyHitboxMeshes.get(enemyId);
-    if (mesh) {
-        mesh.position.copy(group.position);
-        mesh.position.y += 0.8;
-    }
-}
-
-function removeEnemyHitbox(enemyId) {
-    const mesh = enemyHitboxMeshes.get(enemyId);
-    if (mesh) {
-        scene.remove(mesh);
-        mesh.geometry.dispose();
-        mesh.material.dispose();
-        enemyHitboxMeshes.delete(enemyId);
-    }
-}
-
-function toggleEnemyHitboxes(show) {
-    showEnemyHitboxes = show;
-    for (const [id, mesh] of enemyHitboxMeshes) {
-        mesh.visible = show;
-    }
-}
-
-function spawnEnemy(id, type, x, y, z, health, maxHealth) {
-  console.log(`Создаём врага ${type} на (${x}, ${y}, ${z})`);
-    if (enemies.has(id)) return;
-    const group = createEnemyModel(type, health);
-    group.position.set(x, y, z);
-    scene.add(group);
-    const targetPos = new THREE.Vector3(x, y, z);
-    enemies.set(id, { group, targetPos, health, maxHealth, type, lastSync: Date.now() });
-    createEnemyHitbox(id, group);
-    console.log(`Враг добавлен в сцену, всего врагов: ${enemies.size}`);
-}
-
-function removeEnemy(id) {
-    const enemy = enemies.get(id);
-    if (enemy) {
-        removeEnemyHitbox(id);
-        scene.remove(enemy.group);
-        enemies.delete(id);
-    }
-}
-
-function updateEnemyPosition(id, x, y, z, yaw) {
-    const enemy = enemies.get(id);
-    if (enemy) {
-        enemy.targetPos.set(x, y, z);
-        if (yaw !== undefined) enemy.group.rotation.y = yaw;
-        enemy.lastSync = Date.now();
-        updateEnemyHitbox(id, enemy.group);
-    }
-}
-
-function updateEnemyHealth(id, health, maxHealth) {
-    const enemy = enemies.get(id);
-    if (enemy) {
-        enemy.health = health;
-        enemy.maxHealth = maxHealth;
-        if (health <= 0) removeEnemy(id);
-    }
-}
-
-function flashEnemyGroup(group) {
-    if (!group) return;
-    group.children.forEach(child => {
-        if (child.isMesh && child.material) {
-            const orig = child.material.color.getHex();
-            child.material.color.setHex(0xff4444);
-            setTimeout(() => { child.material.color.setHex(orig); }, 200);
-        }
-    });
-}
-
 // ========== Создание модели игрока ==========
 function createPlayerModel(color) {
   const group = new THREE.Group();
@@ -1037,74 +920,6 @@ const EVENTS = {
     scene.add(ring);
     setTimeout(() => scene.remove(ring), (m.duration || 15) * 1000);
   },
-
-  // ========== СОБЫТИЯ ВРАГОВ (ENEMY SYSTEM) ==========
-  enemySpawn: (m) => {
-    console.log('🟢 enemySpawn', m);
-    spawnEnemy(m.id, m.type, m.x, m.y, m.z, m.health, m.maxHealth);
-  },
-  enemyProjectile: (m) => {
-    console.log('🟢 enemyProj', m);
-    // Создаём летящий снаряд (простая сфера)
-    const geo = new THREE.SphereGeometry(0.25, 6, 6);
-    const mat = new THREE.MeshBasicMaterial({ color: m.color || 0xffaa44 });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(m.x, m.y, m.z);
-    scene.add(mesh);
-    // Добавляем в список projectiles (можно использовать существующий)
-    const vel = new THREE.Vector3(m.vx, m.vy, m.vz);
-    // Удаляем через 2 секунды (авто)
-    const startTime = Date.now();
-    const interval = setInterval(() => {
-        mesh.position.addScaledVector(vel, 0.05);
-        // Если прошло больше 2 секунд или снаряд улетел далеко, удаляем
-        if (Date.now() - startTime > 2500 || mesh.position.length() > 200) {
-            clearInterval(interval);
-            scene.remove(mesh);
-            mesh.geometry.dispose();
-            mesh.material.dispose();
-        }
-    }, 50);
-},
-  enemyMove: (m) => {
-    console.log('🔵 enemyMove', m);
-    updateEnemyPosition(m.id, m.x, m.y, m.z, m.yaw);
-  },
-  enemyHp: (m) => {
-    console.log('❤️ enemyHp', m);
-    updateEnemyHealth(m.id, m.health, m.maxHealth);
-  },
-  enemyDeath: (m) => {
-    const enemy = enemies.get(m.id);
-    console.log('💀 enemyDeath', m);
-    if (enemy) {
-      spawnParticles(enemy.group.position.x, enemy.group.position.y + 1, enemy.group.position.z, 0xaa5555, 30, 2, 1.0);
-      removeEnemy(m.id);
-    }
-  },
-  enemyAttack: (m) => {
-    const enemy = enemies.get(m.id);
-    if (!enemy) return;
-    // анимация атаки (встряска)
-    enemy.group.position.y += 0.2;
-    setTimeout(() => { if (enemy.group) enemy.group.position.y -= 0.2; }, 200);
-    // если цель – наш игрок, проверяем расстояние до врага
-    if (m.targetId === myId) {
-      const dist = enemy.group.position.distanceTo(camera.position);
-      if (dist < 10) { // если враг рядом – показываем урон
-        damageFlash();
-        spawnParticles(camera.position.x, camera.position.y - 0.5, camera.position.z, 0xff6666, 20, 1.5, 0.8);
-      }
-      // если враг далеко – не показываем визуал (но урон на сервере всё равно может быть, если там ошибка)
-    } else {
-      const targetPlayer = remotePlayers.get(m.targetId);
-      if (targetPlayer) {
-        const pos = targetPlayer.group.position;
-        spawnParticles(pos.x, pos.y + 1, pos.z, 0xff6666, 20, 1.5, 0.8);
-        flashPlayerModel(targetPlayer.group, 200);
-      }
-    }
-  },
 };
 for (const [t, f] of Object.entries(EVENTS)) net.on(t, f);
 
@@ -1131,21 +946,6 @@ net.on('init', (m) => {
   }
   if (m.zones) m.zones.forEach(z => EVENTS.zoneSpawn(z));
   if (m.timeSlowZones) m.timeSlowZones.forEach(z => EVENTS.timeSlowZone(z));
-  console.log('Начальные враги:', m.enemies);
-  if (m.enemies) {
-    // Небольшая задержка, чтобы сцена успела подготовиться
-    setTimeout(() => {
-        for (const e of m.enemies) {
-            try {
-                spawnEnemy(e.id, e.type, e.x, e.y, e.z, e.health, e.maxHealth);
-            } catch (err) {
-                console.error('Ошибка спавна врага:', err, e);
-            }
-        }
-        console.log(`Всего врагов после инициализации: ${enemies.size}`);
-    }, 50);
-}
-
   setStatus(`онлайн · игроков: ${remotePlayers.size}`);
 });
 net.on('join',  (m) => addRemotePlayer(m.id, { x: 0.5, y: 80, z: 0.5, yaw: 0, nickname: m.nickname }));
@@ -1574,11 +1374,6 @@ bindMobileButton('btn-attack', () => {
   if (!combatMode) return;
   if (spellQueue.length) castSpell('left');
   else {
-    const enemyHit = raycastEnemy(4.5);
-    if (enemyHit) {
-      net.send('attackEnemy', { target: enemyHit.id });
-      return;
-    }
     const target = raycastPlayers(4.5);
     if (target) net.send('attack', { target: target.id });
   }
@@ -1600,11 +1395,6 @@ bindMobileButton('btn-settings', () => { toggleSettings(true); });
 bindMobileButton('btn-combat', () => { combatMode = !combatMode; spellQueue.length = 0; refreshQueueUI(); ringEl.classList.toggle('combat', combatMode); });
 bindMobileButton('btn-break', () => {
   if (combatMode) {
-    const enemyHit = raycastEnemy(4.5);
-    if (enemyHit) {
-      net.send('attackEnemy', { target: enemyHit.id });
-      return;
-    }
     const target = raycastPlayers(4.5);
     if (target) { net.send('attack', { target: target.id }); }
     else if (spellQueue.length) castSpell('left');
@@ -1696,10 +1486,6 @@ document.addEventListener('keydown', (e) => {
     if (spellBookOpen) closeSpellBook();
     else openSpellBook();
     return;
-  }
-  if (e.code === 'KeyO' && !chatFocused && !settingsOpen && !spellBookOpen) {
-      e.preventDefault();
-      toggleEnemyHitboxes(!showEnemyHitboxes);
   }
   if (e.code === 'Escape' && spellBookOpen) {
     closeSpellBook();
@@ -1955,25 +1741,6 @@ function raycastPlayers(maxDist) {
   return best;
 }
 
-function raycastEnemy(maxDist) {
-  const dir = new THREE.Vector3();
-  camera.getWorldDirection(dir);
-  const origin = camera.position;
-  let closest = null;
-  let bestDist = Infinity;
-  for (const [id, e] of enemies) {
-    const box = new THREE.Box3().setFromObject(e.group);
-    const ray = new THREE.Ray(origin, dir);
-    const hitPoint = new THREE.Vector3();
-    const hit = ray.intersectBox(box, hitPoint);
-    if (hit && hit.distance < maxDist && hit.distance < bestDist) {
-      bestDist = hit.distance;
-      closest = { id, dist: hit.distance };
-    }
-  }
-  return closest;
-}
-
 function intersectsPlayer(bx, by, bz) {
   const half = PLAYER.width / 2;
   return bx + 1 > player.pos.x - half && bx < player.pos.x + half &&
@@ -2165,11 +1932,6 @@ document.addEventListener('mousedown', (e) => {
 
   if (combatMode) {
     if (e.button === 0) {
-      const enemyHit = raycastEnemy(4.5);
-      if (enemyHit) {
-        net.send('attackEnemy', { target: enemyHit.id });
-        return;
-      }
       if (spellQueue.length) castSpell('left');
       else { const t = raycastPlayers(4.5); if (t) net.send('attack', { target: t.id }); }
     } else if (e.button === 2) {
@@ -2180,11 +1942,6 @@ document.addEventListener('mousedown', (e) => {
 
   const hit = raycastBlock(5);
   if (e.button === 0) {
-    const enemyHit = raycastEnemy(4.5);
-    if (enemyHit) {
-      net.send('attackEnemy', { target: enemyHit.id });
-      return;
-    }
     const target = raycastPlayers(4.5);
     if (target && (!hit || target.dist < hit.dist)) {
       net.send('attack', { target: target.id });
@@ -2224,16 +1981,6 @@ function animate(now) {
       Math.floor(player.pos.z / CHUNK_SIZE));
     if (ready && !chatFocused && !settingsOpen && !spellBookOpen) updatePlayer(dt);
     updateRemotePlayers(dt);
-
-    // Интерполяция врагов
-    const lerpFactor = 1 - Math.pow(0.01, dt); // более быстрая интерполяция
-for (const enemy of enemies.values()) {
-    enemy.group.position.lerp(enemy.targetPos, lerpFactor);
-    // Если враг сильно отстаёт, принудительно ставим в целевую позицию
-    if (enemy.group.position.distanceTo(enemy.targetPos) > 5) {
-        enemy.group.position.copy(enemy.targetPos);
-    }
-}
 
     for (const pr of projectiles.values()) {
       if (pr.gravity || pr.kind === 'meteor') pr.vel.y -= (pr.kind === 'meteor' ? 10 : 20) * dt;
