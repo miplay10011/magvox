@@ -1041,6 +1041,28 @@ const EVENTS = {
   enemySpawn: (m) => {
     spawnEnemy(m.id, m.type, m.x, m.y, m.z, m.health, m.maxHealth);
   },
+  enemyProjectile: (m) => {
+    // Создаём летящий снаряд (простая сфера)
+    const geo = new THREE.SphereGeometry(0.25, 6, 6);
+    const mat = new THREE.MeshBasicMaterial({ color: m.color || 0xffaa44 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(m.x, m.y, m.z);
+    scene.add(mesh);
+    // Добавляем в список projectiles (можно использовать существующий)
+    const vel = new THREE.Vector3(m.vx, m.vy, m.vz);
+    // Удаляем через 2 секунды (авто)
+    const startTime = Date.now();
+    const interval = setInterval(() => {
+        mesh.position.addScaledVector(vel, 0.05);
+        // Если прошло больше 2 секунд или снаряд улетел далеко, удаляем
+        if (Date.now() - startTime > 2500 || mesh.position.length() > 200) {
+            clearInterval(interval);
+            scene.remove(mesh);
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+        }
+    }, 50);
+},
   enemyMove: (m) => {
     updateEnemyPosition(m.id, m.x, m.y, m.z, m.yaw);
   },

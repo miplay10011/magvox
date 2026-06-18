@@ -19,11 +19,14 @@ export class Enemy {
         this.knockback = { x: 0, z: 0 };
         this.yaw = 0;
         this.lastSync = 0;
+        // Для дальних атак (скелеты)
+        this.shootCooldown = 0;
     }
 
     update(dt, players, getBlock, getHeight) {
         if (this.health <= 0) return;
 
+        // Поиск цели
         if (!this.target || !players.has(this.target.id)) {
             this.acquireTarget(players);
         }
@@ -35,54 +38,77 @@ export class Enemy {
             const attackRange = this.type.attackRange;
             const followRange = this.type.followRange;
 
+            // Если цель в радиусе атаки
             if (distSq <= attackRange * attackRange) {
-                this.attackTarget();
-            } else if (distSq <= followRange * followRange) {
+                this.attackTarget(dt);
+            } 
+            // Если цель в радиусе следования, двигаемся к ней
+            else if (distSq <= followRange * followRange) {
                 this.moveTowards(dx, dz, dt);
-            } else {
-                if (Math.random() < 0.02) this.randomWalk(dt);
+            } 
+            // Случайное блуждание
+            else {
+                if (Math.random() < 0.01) this.randomWalk(dt);
             }
         } else {
-            if (Math.random() < 0.02) this.randomWalk(dt);
+            if (Math.random() < 0.01) this.randomWalk(dt);
         }
 
-        // Гравитация и коллизии
+        // Применяем физику (гравитация, коллизии)
         if (!this.type.flying) {
             this.velocity.y -= 20 * dt;
             this.y += this.velocity.y * dt;
             this.resolveVerticalCollision(getBlock);
         } else {
+            // Летающие: держимся на высоте terrainHeight + 2
             const groundY = getHeight(this.x, this.z);
             this.y = groundY + 2;
             this.velocity.y = 0;
         }
 
+        // Горизонтальное движение
         let moveX = (this.velocity.x + this.knockback.x) * dt;
         let moveZ = (this.velocity.z + this.knockback.z) * dt;
         this.x += moveX;
         this.z += moveZ;
         this.resolveHorizontalCollision(getBlock);
 
+        // Затухание
         this.velocity.x *= 0.9;
         this.velocity.z *= 0.9;
         this.knockback.x *= 0.8;
         this.knockback.z *= 0.8;
 
+        // Ограничения мира
         this.x = Math.max(0.5, Math.min(1000, this.x));
         this.z = Math.max(0.5, Math.min(1000, this.z));
         this.y = Math.max(1, Math.min(200, this.y));
+
+        // Синхронизация с клиентами
+        const now = Date.now();
+        if (now - this.lastSync > 200) {
+            this.lastSync = now;
+            this.manager.broadcast('enemyMove', {
+                id: this.id,
+                x: this.x,
+                y: this.y,
+                z: this.z,
+                yaw: this.yaw
+            });
+        }
     }
 
     acquireTarget(players) {
         let closest = null;
         let bestDist = Infinity;
+        const followRange = this.type.followRange;
         for (const [id, p] of players) {
             const dx = p.x - this.x;
             const dz = p.z - this.z;
             const distSq = dx*dx + dz*dz;
-            if (distSq < bestDist && distSq < this.type.followRange * this.type.followRange) {
+            if (distSq < bestDist && distSq < followRange * followRange) {
                 bestDist = distSq;
-                closest = { id, x: p.x, z: p.z, isPlayer: true };
+                closest = { id, x: p.x, z: p.z };
             }
         }
         this.target = closest;
@@ -101,36 +127,103 @@ export class Enemy {
 
     randomWalk(dt) {
         const angle = Math.random() * Math.PI * 2;
-        this.velocity.x = Math.cos(angle) * this.type.speed * 0.5;
-        this.velocity.z = Math.sin(angle) * this.type.speed * 0.5;
+        this.velocity.x = Math.cos(angle) * this.type.speed * 0.3;
+        this.velocity.z = Math.sin(angle) * this.type.speed * 0.3;
     }
 
-    attackTarget() {
+    attackTarget(dt) {
         const now = Date.now();
+        // Проверка кулдауна атаки
         if (now - this.lastAttack < this.type.attackCooldown * 1000) return;
-        this.lastAttack = now;
 
-        // Все враги теперь используют единую ближнюю атаку с проверкой дистанции
-        const dmg = this.type.damage;
         const player = this.manager.players.get(this.target.id);
-        if (player && this.distanceTo(player) < this.type.attackRange) {
-            this.manager.applyDamageToPlayer(this.target.id, dmg, {
+        if (!player) return;
+
+        const dist = this.distanceTo(player);
+
+        // Для дальних атак (скелеты)
+        if (this.type.ranged) {
+            // Если игрок в пределах дальности, стреляем
+            if (dist <= this.type.attackRange) {
+                this.lastAttack = now;
+                this.shootProjectile(player);
+            }
+        } else {
+            // Ближняя атака
+            if (dist <= this.type.attackRange) {
+                this.lastAttack = now;
+                // Наносим урон
+                const dmg = this.type.damage;
+                this.manager.applyDamageToPlayer(this.target.id, dmg, {
+                    ax: this.x, az: this.z,
+                    kb: this.type.knockback,
+                    attackerId: null,
+                    weapon: this.type.name
+                });
+                // Эффекты
+                if (this.type.effects) {
+                    for (const [eff, dur] of Object.entries(this.type.effects)) {
+                        this.manager.addEffectToPlayer(this.target.id, eff, dur, 1);
+                    }
+                }
+                this.manager.broadcast('enemyAttack', {
+                    id: this.id,
+                    targetId: this.target.id,
+                    type: this.type.id
+                });
+            }
+        }
+    }
+
+    shootProjectile(target) {
+        // Создаём снаряд (простой, без магии)
+        const speed = 12;
+        const dx = target.x - this.x;
+        const dz = target.z - this.z;
+        const dy = (target.y + 1.2) - (this.y + 1.2);
+        const len = Math.hypot(dx, dy, dz);
+        if (len === 0) return;
+        const vx = (dx / len) * speed;
+        const vy = (dy / len) * speed;
+        const vz = (dz / len) * speed;
+
+        // Отправляем клиентам событие о снаряде
+        this.manager.broadcast('enemyProjectile', {
+            id: this.id,
+            x: this.x,
+            y: this.y + 1.2,
+            z: this.z,
+            vx, vy, vz,
+            targetId: target.id,
+            damage: this.type.damage,
+            color: this.type.projectileColor || 0xffaa44
+        });
+
+        // На сервере можно сразу нанести урон через некоторое время (имитация полёта)
+        // или доверить клиенту. Но лучше на сервере тоже считать.
+        // Мы добавим простую проверку: через 0.5 секунды нанести урон, если цель не ушла далеко.
+        setTimeout(() => {
+            // Проверяем, жив ли враг и цель
+            if (this.health <= 0) return;
+            const currentTarget = this.manager.players.get(target.id);
+            if (!currentTarget) return;
+            // Проверяем расстояние, которое могла пройти цель
+            const distNow = this.distanceTo(currentTarget);
+            if (distNow > this.type.attackRange + 2) return; // слишком далеко
+            // Наносим урон
+            this.manager.applyDamageToPlayer(target.id, this.type.damage, {
                 ax: this.x, az: this.z,
-                kb: this.type.knockback,
+                kb: this.type.knockback * 0.5,
                 attackerId: null,
-                weapon: this.type.name
+                weapon: this.type.name + ' (стрела)'
             });
+            // Эффекты (если есть)
             if (this.type.effects) {
                 for (const [eff, dur] of Object.entries(this.type.effects)) {
-                    this.manager.addEffectToPlayer(this.target.id, eff, dur, 1);
+                    this.manager.addEffectToPlayer(target.id, eff, dur, 1);
                 }
             }
-            this.manager.broadcast('enemyAttack', {
-                id: this.id,
-                targetId: this.target.id,
-                type: this.type.id
-            });
-        }
+        }, 400);
     }
 
     distanceTo(entity) {
@@ -196,7 +289,7 @@ export class Enemy {
     }
 }
 
-// ТИПЫ ВРАГОВ – все теперь ближние (проверка дистанции)
+// ТИПЫ ВРАГОВ
 export const ENEMY_TYPES = {
     zombie: {
         id: 'zombie',
@@ -209,6 +302,7 @@ export const ENEMY_TYPES = {
         attackCooldown: 1.0,
         knockback: 6,
         flying: false,
+        ranged: false,
         effects: { weakness: 5 }
     },
     skeleton: {
@@ -217,12 +311,14 @@ export const ENEMY_TYPES = {
         health: 18,
         damage: 6,
         speed: 2.2,
-        attackRange: 15,        // дальняя атака с проверкой дистанции
-        followRange: 25,
+        attackRange: 20,       // дальность стрельбы
+        followRange: 30,       // дальность преследования
         attackCooldown: 1.5,
         knockback: 3,
         flying: false,
-        effects: {}
+        ranged: true,
+        projectileColor: 0xffaa44,
+        effects: { slow: 2 }   // замедление на 2 секунды при попадании
     },
     creeper: {
         id: 'creeper',
@@ -235,8 +331,7 @@ export const ENEMY_TYPES = {
         attackCooldown: 2.0,
         knockback: 12,
         flying: false,
-        explosive: true,
-        explosionRadius: 4,
+        ranged: false,
         effects: {}
     },
     ghost: {
@@ -250,6 +345,7 @@ export const ENEMY_TYPES = {
         attackCooldown: 0.8,
         knockback: 2,
         flying: true,
+        ranged: false,
         effects: { slow: 3, blind: 2 }
     },
     fireElemental: {
@@ -263,6 +359,7 @@ export const ENEMY_TYPES = {
         attackCooldown: 1.2,
         knockback: 5,
         flying: false,
+        ranged: false,
         effects: { burning: 4 }
     }
 };
@@ -286,23 +383,14 @@ export class EnemyManager {
         const now = Date.now();
         for (const enemy of this.enemies.values()) {
             enemy.update(dt, this.players, this.getBlock, this.getHeight);
-            if (!enemy.lastSync || now - enemy.lastSync > 200) {
-                enemy.lastSync = now;
-                this.broadcast('enemyMove', {
-                    id: enemy.id,
-                    x: enemy.x,
-                    y: enemy.y,
-                    z: enemy.z,
-                    yaw: enemy.yaw || 0
-                });
-            }
             if (enemy.health <= 0) this.destroyEnemy(enemy.id);
         }
 
+        // Спавн новых
         if (this.enemies.size < this.maxEnemies) {
             if (this.spawnCooldown <= 0) {
                 this.trySpawnEnemy();
-                this.spawnCooldown = 5;
+                this.spawnCooldown = 8; // задержка между спавнами
             } else {
                 this.spawnCooldown -= dt;
             }
@@ -313,15 +401,17 @@ export class EnemyManager {
         const playerList = [...this.players.values()];
         if (playerList.length === 0) return;
         const targetPlayer = playerList[Math.floor(Math.random() * playerList.length)];
-        for (let attempt = 0; attempt < 20; attempt++) {
+        for (let attempt = 0; attempt < 30; attempt++) {
             const angle = Math.random() * Math.PI * 2;
-            const dist = 20 + Math.random() * 30;
+            const dist = 25 + Math.random() * 40; // дальше от игрока
             const x = targetPlayer.x + Math.cos(angle) * dist;
             const z = targetPlayer.z + Math.sin(angle) * dist;
             const groundY = this.getHeight(x, z);
             const y = groundY + 1;
+            // Проверка, что место пустое
             if (this.getBlock(Math.floor(x), Math.floor(y), Math.floor(z)) === AIR &&
                 this.getBlock(Math.floor(x), Math.floor(y) + 1, Math.floor(z)) === AIR) {
+                // Выбираем тип (можно с весами, но пока равномерно)
                 const typeKeys = Object.keys(ENEMY_TYPES);
                 const randType = ENEMY_TYPES[typeKeys[Math.floor(Math.random() * typeKeys.length)]];
                 this.spawnEnemy(randType, x, y, z);
@@ -361,6 +451,7 @@ export class EnemyManager {
         if (now - enemy.lastDamageTime < 200) return;
         enemy.lastDamageTime = now;
         enemy.health -= amount;
+        // Отбрасывание
         const dx = enemy.x - sourceX;
         const dz = enemy.z - sourceZ;
         const len = Math.hypot(dx, dz);
