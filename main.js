@@ -920,6 +920,26 @@ const EVENTS = {
     scene.add(ring);
     setTimeout(() => scene.remove(ring), (m.duration || 15) * 1000);
   },
+
+  // ========== СОБЫТИЯ СУЩНОСТЕЙ (добавлено) ==========
+  entitySpawn: (m) => {
+    createEntityFromData(m);
+  },
+  entityUpdate: (m) => {
+    const ent = remoteEntities.get(m.id);
+    if (!ent) return;
+    ent.targetPos.set(m.x, m.y, m.z);
+    if (m.yaw !== undefined) ent.targetYaw = m.yaw;
+    if (m.pitch !== undefined) ent.targetPitch = m.pitch;
+  },
+  entityDespawn: (m) => {
+    const ent = remoteEntities.get(m.id);
+    if (!ent) return;
+    scene.remove(ent.mesh);
+    ent.mesh.geometry.dispose();
+    ent.mesh.material.dispose();
+    remoteEntities.delete(m.id);
+  },
 };
 for (const [t, f] of Object.entries(EVENTS)) net.on(t, f);
 
@@ -935,6 +955,35 @@ function setBlindness(active) {
 
 let shieldMesh = null;
 
+// ========== Хранилище сущностей ==========
+const remoteEntities = new Map();
+
+function createEntityFromData(data) {
+  const color = data.data?.color || 0x44aaff;
+  const geo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+  const mat = new THREE.MeshStandardMaterial({ color });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(data.x, data.y, data.z);
+  mesh.rotation.y = data.yaw || 0;
+  mesh.rotation.x = data.pitch || 0;
+  scene.add(mesh);
+  remoteEntities.set(data.id, {
+    mesh,
+    targetPos: new THREE.Vector3(data.x, data.y, data.z),
+    targetYaw: data.yaw || 0,
+    targetPitch: data.pitch || 0,
+  });
+}
+
+function updateRemoteEntities(dt) {
+  const k = 1 - Math.pow(0.0001, dt);
+  for (const ent of remoteEntities.values()) {
+    ent.mesh.position.lerp(ent.targetPos, k);
+    ent.mesh.rotation.y += (ent.targetYaw - ent.mesh.rotation.y) * k;
+    ent.mesh.rotation.x += (ent.targetPitch - ent.mesh.rotation.x) * k;
+  }
+}
+
 net.on('init', (m) => {
   myId = m.id;
   myNickname = m.nickname;
@@ -946,6 +995,10 @@ net.on('init', (m) => {
   }
   if (m.zones) m.zones.forEach(z => EVENTS.zoneSpawn(z));
   if (m.timeSlowZones) m.timeSlowZones.forEach(z => EVENTS.timeSlowZone(z));
+  // Добавляем сущности из инициализации
+  if (m.entities) {
+    for (const e of m.entities) createEntityFromData(e);
+  }
   setStatus(`онлайн · игроков: ${remotePlayers.size}`);
 });
 net.on('join',  (m) => addRemotePlayer(m.id, { x: 0.5, y: 80, z: 0.5, yaw: 0, nickname: m.nickname }));
@@ -1536,6 +1589,11 @@ document.addEventListener('keydown', (e) => {
       else { selectedSlot = n - 1; refreshUI(); }
     }
   }
+  // Команда для создания сущности (опционально)
+  if (e.code === 'KeyG' && !chatFocused && !settingsOpen && !spellBookOpen) {
+    e.preventDefault();
+    net.send('spawnEntity', {});
+  }
 });
 document.addEventListener('keyup', (e) => keys.delete(e.code));
 document.addEventListener('wheel', (e) => {
@@ -2005,6 +2063,9 @@ function animate(now) {
     syncPosition(now);
     renderEffects(now);
     updateCoordDisplay();
+
+    // Обновление сущностей (интерполяция)
+    updateRemoteEntities(dt);
   }
   renderer.render(scene, camera);
 }

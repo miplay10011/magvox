@@ -756,6 +756,95 @@ function generateBamboo(editsMap, cx, cz, groundY) {
   }
 }
 
+// ==================== СУЩНОСТИ (добавлено) ====================
+let nextEntityId = 1;
+const entities = new Map();
+
+class Entity {
+  constructor(type, x, y, z, data = {}) {
+    this.id = nextEntityId++;
+    this.type = type;
+    this.x = x;
+    this.y = y;
+    this.z = z;
+    this.vx = 0;
+    this.vy = 0;
+    this.vz = 0;
+    this.yaw = 0;
+    this.pitch = 0;
+    this.data = data;            // { color, model, itemId, ... }
+    this.hitboxRadius = data.hitboxRadius || 0.5;
+    this.alive = true;
+  }
+}
+
+function spawnEntity(type, x, y, z, data = {}) {
+  const entity = new Entity(type, x, y, z, data);
+  entities.set(entity.id, entity);
+  broadcast('entitySpawn', {
+    id: entity.id,
+    type: entity.type,
+    x: entity.x,
+    y: entity.y,
+    z: entity.z,
+    yaw: entity.yaw,
+    pitch: entity.pitch,
+    data: entity.data,
+  });
+  return entity.id;
+}
+
+function despawnEntity(id) {
+  const entity = entities.get(id);
+  if (!entity) return;
+  entity.alive = false;
+  entities.delete(id);
+  broadcast('entityDespawn', { id });
+}
+
+function updateEntity(entity, dt) {
+  // Пример движения по кругу (для типа test_cube)
+  if (entity.type === 'test_cube') {
+    const speed = 1.5;
+    const radius = 4;
+    if (!entity.data.angle) entity.data.angle = 0;
+    entity.data.angle += dt * speed;
+    if (!entity.data.centerX) {
+      entity.data.centerX = entity.x;
+      entity.data.centerY = entity.y;
+      entity.data.centerZ = entity.z;
+    }
+    entity.x = entity.data.centerX + Math.cos(entity.data.angle) * radius;
+    entity.z = entity.data.centerZ + Math.sin(entity.data.angle) * radius;
+    entity.y = entity.data.centerY + Math.sin(entity.data.angle * 0.5) * 0.5;
+    entity.yaw = entity.data.angle;
+    broadcast('entityUpdate', {
+      id: entity.id,
+      x: entity.x,
+      y: entity.y,
+      z: entity.z,
+      yaw: entity.yaw,
+      pitch: entity.pitch,
+    });
+  }
+}
+
+function updateEntities(dt) {
+  for (const entity of entities.values()) {
+    if (entity.alive) updateEntity(entity, dt);
+  }
+}
+
+// Создаём тестовые сущности при старте
+for (let i = 0; i < 5; i++) {
+  const angle = (i / 5) * Math.PI * 2;
+  const radius = 6 + Math.random() * 4;
+  const x = Math.cos(angle) * radius;
+  const z = Math.sin(angle) * radius;
+  const y = getCachedHeight(Math.floor(x), Math.floor(z)) + 2;
+  spawnEntity('test_cube', x, y, z, { color: 0xffaa44 + (i * 0x112233) });
+}
+
 // ==================== WebSocket СЕРВЕР ====================
 const wss = new WebSocketServer({ server: httpServer });
 function send(ws, type, data) { if (ws.readyState === 1) ws.send(JSON.stringify({type,...data})); }
@@ -1132,6 +1221,9 @@ setInterval(() => {
     }
   }
 
+  // Обновление сущностей
+  updateEntities(dt);
+
   if (now - lastManaSync > 1000) {
     lastManaSync = now;
     for (const q of players.values()) send(q.ws, 'mana', { mana: Math.floor(q.mana) });
@@ -1159,6 +1251,13 @@ wss.on('connection', (ws) => {
     })),
     zones: [...activeZones].map(([zid, z]) => ({ id: zid, x: z.x, z: z.z, radius: z.radius, effect: z.effect })),
     timeSlowZones: [...timeSlowZones].map(([zid, z]) => ({ id: zid, x: z.x, z: z.z, radius: z.radius, duration: (z.endTime - Date.now()) / 1000 })),
+    entities: [...entities.values()].map(e => ({   // добавлено
+      id: e.id,
+      type: e.type,
+      x: e.x, y: e.y, z: e.z,
+      yaw: e.yaw, pitch: e.pitch,
+      data: e.data,
+    })),
   });
   broadcast('join', { id, nickname }, id);
 
@@ -1195,6 +1294,11 @@ wss.on('connection', (ws) => {
     } else if (msg.type === 'swap_positions') {
       const target = players.get(msg.target);
       if (target && Math.hypot(q.x - target.x, q.z - target.z) < 10) magicCtx.swapPositions(id, msg.target);
+    } else if (msg.type === 'spawnEntity') {   // добавлено (опционально)
+      const x = q.x + (Math.random() - 0.5) * 4;
+      const z = q.z + (Math.random() - 0.5) * 4;
+      const y = q.y + 1;
+      spawnEntity('test_cube', x, y, z, { color: Math.random() * 0xffffff });
     }
   });
 
