@@ -622,6 +622,7 @@ function toggleEnemyHitboxes(show) {
 }
 
 function spawnEnemy(id, type, x, y, z, health, maxHealth) {
+  console.log(`Создаём врага ${type} на (${x}, ${y}, ${z})`);
     if (enemies.has(id)) return;
     const group = createEnemyModel(type, health);
     group.position.set(x, y, z);
@@ -1039,9 +1040,11 @@ const EVENTS = {
 
   // ========== СОБЫТИЯ ВРАГОВ (ENEMY SYSTEM) ==========
   enemySpawn: (m) => {
+    console.log('🟢 enemySpawn', m);
     spawnEnemy(m.id, m.type, m.x, m.y, m.z, m.health, m.maxHealth);
   },
   enemyProjectile: (m) => {
+    console.log('🟢 enemyProj', m);
     // Создаём летящий снаряд (простая сфера)
     const geo = new THREE.SphereGeometry(0.25, 6, 6);
     const mat = new THREE.MeshBasicMaterial({ color: m.color || 0xffaa44 });
@@ -1064,13 +1067,16 @@ const EVENTS = {
     }, 50);
 },
   enemyMove: (m) => {
+    console.log('🔵 enemyMove', m);
     updateEnemyPosition(m.id, m.x, m.y, m.z, m.yaw);
   },
   enemyHp: (m) => {
+    console.log('❤️ enemyHp', m);
     updateEnemyHealth(m.id, m.health, m.maxHealth);
   },
   enemyDeath: (m) => {
     const enemy = enemies.get(m.id);
+    console.log('💀 enemyDeath', m);
     if (enemy) {
       spawnParticles(enemy.group.position.x, enemy.group.position.y + 1, enemy.group.position.z, 0xaa5555, 30, 2, 1.0);
       removeEnemy(m.id);
