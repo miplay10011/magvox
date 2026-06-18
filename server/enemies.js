@@ -25,7 +25,6 @@ export class Enemy {
     update(dt, players, getBlock, getHeight) {
         if (this.health <= 0) return;
 
-        // Поиск цели
         if (!this.target || !players.has(this.target.id)) {
             this.acquireTarget(players);
         }
@@ -48,7 +47,6 @@ export class Enemy {
             this.randomWalk(dt);
         }
 
-        // Гравитация и коллизии
         if (!this.type.flying) {
             this.velocity.y -= 20 * dt;
             this.y += this.velocity.y * dt;
@@ -59,25 +57,21 @@ export class Enemy {
             this.velocity.y = 0;
         }
 
-        // Горизонтальное движение
         let moveX = (this.velocity.x + this.knockback.x) * dt;
         let moveZ = (this.velocity.z + this.knockback.z) * dt;
         this.x += moveX;
         this.z += moveZ;
         this.resolveHorizontalCollision(getBlock);
 
-        // Затухание
         this.velocity.x *= 0.9;
         this.velocity.z *= 0.9;
         this.knockback.x *= 0.8;
         this.knockback.z *= 0.8;
 
-        // Ограничение мира
         this.x = Math.max(0.5, Math.min(1000, this.x));
         this.z = Math.max(0.5, Math.min(1000, this.z));
         this.y = Math.max(1, Math.min(200, this.y));
 
-        // Синхронизация с клиентами
         if (!this.lastSync || Date.now() - this.lastSync > 200) {
             this.lastSync = Date.now();
             this.manager.broadcast('enemyMove', {
@@ -117,7 +111,6 @@ export class Enemy {
     }
 
     randomWalk(dt) {
-        // Если нет цели, бродим случайно
         if (Math.random() < 0.02) {
             const angle = Math.random() * Math.PI * 2;
             this.velocity.x = Math.cos(angle) * this.type.speed * 0.3;
@@ -215,7 +208,6 @@ export class Enemy {
     }
 }
 
-// ТИПЫ ВРАГОВ
 export const ENEMY_TYPES = {
     zombie: {
         id: 'zombie',
@@ -224,7 +216,7 @@ export const ENEMY_TYPES = {
         damage: 4,
         speed: 2.5,
         attackRange: 1.8,
-        followRange: 30,   // увеличен радиус поиска
+        followRange: 30,
         attackCooldown: 1.0,
         knockback: 6,
         flying: false,
@@ -302,7 +294,6 @@ export class EnemyManager {
 
     update(dt) {
         const now = Date.now();
-        // Обновление каждого врага
         for (const enemy of this.enemies.values()) {
             enemy.update(dt, this.players, this.getBlock, this.getHeight);
             if (enemy.health <= 0) this.destroyEnemy(enemy.id);
@@ -312,28 +303,30 @@ export class EnemyManager {
         if (this.enemies.size < this.maxEnemies) {
             if (this.spawnCooldown <= 0) {
                 this.trySpawnEnemy();
-                this.spawnCooldown = 3; // уменьшил до 3 секунд для теста
+                this.spawnCooldown = 3;
             } else {
                 this.spawnCooldown -= dt;
             }
+        }
+
+        // Лог каждые 5 секунд
+        if (!this._logTimer || Date.now() - this._logTimer > 5000) {
+            this._logTimer = Date.now();
+            console.log(`[EnemyManager] Врагов: ${this.enemies.size}, игроков: ${this.players.size}`);
         }
     }
 
     trySpawnEnemy() {
         const playerList = [...this.players.values()];
-        if (playerList.length === 0) {
-            console.log('[EnemyManager] Нет игроков для спавна');
-            return;
-        }
+        if (playerList.length === 0) return;
         const targetPlayer = playerList[Math.floor(Math.random() * playerList.length)];
         for (let attempt = 0; attempt < 30; attempt++) {
             const angle = Math.random() * Math.PI * 2;
-            const dist = 15 + Math.random() * 25; // ближе к игроку (15-40 блоков)
+            const dist = 15 + Math.random() * 25;
             const x = targetPlayer.x + Math.cos(angle) * dist;
             const z = targetPlayer.z + Math.sin(angle) * dist;
             const groundY = this.getHeight(x, z);
             const y = groundY + 1;
-            // Проверка, что место пустое и над ним есть воздух
             if (this.getBlock(Math.floor(x), Math.floor(y), Math.floor(z)) === AIR &&
                 this.getBlock(Math.floor(x), Math.floor(y) + 1, Math.floor(z)) === AIR) {
                 const typeKeys = Object.keys(ENEMY_TYPES);
@@ -342,7 +335,6 @@ export class EnemyManager {
                 return;
             }
         }
-        console.log('[EnemyManager] Не удалось найти место для спавна');
     }
 
     spawnEnemy(type, x, y, z) {

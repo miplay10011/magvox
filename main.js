@@ -630,6 +630,7 @@ function spawnEnemy(id, type, x, y, z, health, maxHealth) {
     const targetPos = new THREE.Vector3(x, y, z);
     enemies.set(id, { group, targetPos, health, maxHealth, type, lastSync: Date.now() });
     createEnemyHitbox(id, group);
+    console.log(`Враг добавлен в сцену, всего врагов: ${enemies.size}`);
 }
 
 function removeEnemy(id) {
@@ -1131,7 +1132,7 @@ net.on('init', (m) => {
   }
   if (m.zones) m.zones.forEach(z => EVENTS.zoneSpawn(z));
   if (m.timeSlowZones) m.timeSlowZones.forEach(z => EVENTS.timeSlowZone(z));
-
+  console.log('Начальные враги:', m.enemies);
   if (m.enemies) {
     for (const e of m.enemies) {
       spawnEnemy(e.id, e.type, e.x, e.y, e.z, e.health, e.maxHealth);
