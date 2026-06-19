@@ -756,7 +756,7 @@ function generateBamboo(editsMap, cx, cz, groundY) {
   }
 }
 
-// ==================== СУЩНОСТИ (исправленная версия с мобами) ====================
+// ==================== СУЩНОСТИ (с гравитацией и прыжками) ====================
 let nextEntityId = 1;
 const entities = new Map();
 
@@ -772,6 +772,8 @@ const MOB_TYPES = {
     width: 0.6,
     height: 1.8,
     color: 0x44aa44,
+    gravity: 1,          // 1 – наземный, 0 – летающий
+    jumpPower: 6.0,      // сила прыжка
   },
   skeleton: {
     health: 20,
@@ -783,6 +785,21 @@ const MOB_TYPES = {
     width: 0.6,
     height: 1.8,
     color: 0xcccccc,
+    gravity: 1,
+    jumpPower: 5.0,
+  },
+  ghost: {
+    health: 15,
+    maxHealth: 15,
+    walkSpeed: 3.0,
+    damage: 2.0,
+    damageDistance: 3.0,
+    attackCooldown: 1.0,
+    width: 0.6,
+    height: 1.8,
+    color: 0x88aaff,
+    gravity: 0,          // летающий
+    jumpPower: 0,
   },
   // можно добавить другие
 };
@@ -801,9 +818,7 @@ class Entity {
     this.pitch = 0;
     this.alive = true;
 
-    // Поля для мобов
     if (type === 'mob') {
-      // Парсим data (может быть объект или строка)
       let mobData = data;
       if (typeof data === 'string') {
         mobData = parseMobData(data);
@@ -820,17 +835,18 @@ class Entity {
       this.width = mobData.width ?? defaults.width;
       this.height = mobData.height ?? defaults.height;
       this.color = mobData.color ?? defaults.color;
+      this.gravity = mobData.gravity ?? defaults.gravity ?? 1;
+      this.jumpPower = mobData.jumpPower ?? defaults.jumpPower ?? 6.0;
       this.lastAttackTime = 0;
       this.onGround = false;
     } else {
-      // Для тестовых кубов и других типов
       this.data = data;
       this.hitboxRadius = data.hitboxRadius || 0.5;
     }
   }
 }
 
-// Парсер строки вида "mob:zombie,health:30f,max_health:30,walk_speed:3f,damage:3f,damage_distance:5f"
+// Парсер строки вида "mob:zombie,health:30f,max_health:30,walk_speed:3f,damage:3f,damage_distance:5f,gravity:0"
 function parseMobData(str) {
   const result = {};
   const parts = str.split(',');
@@ -839,7 +855,6 @@ function parseMobData(str) {
     if (!key || value === undefined) continue;
     const trimmedKey = key.trim();
     let trimmedVal = value.trim();
-    // Убираем суффикс 'f' для чисел
     let numVal = parseFloat(trimmedVal);
     if (!isNaN(numVal)) {
       result[trimmedKey] = numVal;
@@ -868,6 +883,7 @@ function spawnEntity(type, x, y, z, data = {}) {
       color: entity.color,
       width: entity.width,
       height: entity.height,
+      gravity: entity.gravity,
     } : entity.data,
   });
   return entity.id;
@@ -881,82 +897,121 @@ function despawnEntity(id) {
   broadcast('entityDespawn', { id });
 }
 
-// Нанесение урона сущности
 function damageEntity(entityId, dmg, src = {}) {
   const entity = entities.get(entityId);
   if (!entity || !entity.alive || entity.type !== 'mob') return;
   if (dmg <= 0) return;
-  // Применяем урон (можно учесть броню моба в будущем)
   entity.hp -= dmg;
   if (entity.hp <= 0) {
-    // Моб умирает
     despawnEntity(entityId);
     broadcast('systemMessage', { message: `Моб ${entity.mobType} убит!` });
-    // Можно добавить эффект смерти (частицы) через broadcast
   } else {
-    // Отправляем обновление HP (можно добавить событие)
     broadcast('entityHp', { id: entityId, hp: entity.hp, maxHp: entity.maxHp });
   }
 }
 
-// Коллизия сущности с блоками (используем getBlockType)
-function moveEntityWithCollision(entity, dx, dz, dt) {
+// ---- Движение наземного моба (с гравитацией, коллизией и прыжками) ----
+function moveMobGround(entity, dx, dz, dt) {
   const halfW = entity.width / 2;
   const height = entity.height;
+  const gravityAccel = 20.0;
 
-  // Проверка столкновения в заданной позиции (x, z)
-  function collidesAt(x, z) {
-    // Проверяем блоки, которые занимает сущность
+  // Проверка столкновения с блоками в заданной позиции (x, z) на уровне y
+  function collidesAt(x, z, y) {
     const minX = Math.floor(x - halfW);
     const maxX = Math.floor(x + halfW);
     const minZ = Math.floor(z - halfW);
     const maxZ = Math.floor(z + halfW);
-    // Проверяем по Y от ног до головы (с шагом)
-    const startY = Math.floor(entity.y);
-    const endY = Math.floor(entity.y + height - 0.01);
-    for (let y = startY; y <= endY; y++) {
+    const startY = Math.floor(y);
+    const endY = Math.floor(y + height - 0.01);
+    for (let by = startY; by <= endY; by++) {
       for (let bx = minX; bx <= maxX; bx++) {
         for (let bz = minZ; bz <= maxZ; bz++) {
-          if (getBlockType(bx, y, bz) !== 0) {
-            return true;
-          }
+          if (getBlockType(bx, by, bz) !== 0) return true;
         }
       }
     }
     return false;
   }
 
-  // Пробуем движение по X
+  // ---- Горизонтальное движение ----
+  // Пробуем X
   const newX = entity.x + dx * dt;
-  if (!collidesAt(newX, entity.z)) {
+  if (!collidesAt(newX, entity.z, entity.y)) {
     entity.x = newX;
   } else {
     entity.vx = 0;
+    // Если упёрлись в блок и стоим на земле – прыгаем
+    if (entity.onGround && entity.jumpPower > 0) {
+      entity.vy = entity.jumpPower;
+      entity.onGround = false;
+    }
   }
 
-  // Пробуем движение по Z
+  // Пробуем Z
   const newZ = entity.z + dz * dt;
-  if (!collidesAt(entity.x, newZ)) {
+  if (!collidesAt(entity.x, newZ, entity.y)) {
     entity.z = newZ;
   } else {
     entity.vz = 0;
+    if (entity.onGround && entity.jumpPower > 0) {
+      entity.vy = entity.jumpPower;
+      entity.onGround = false;
+    }
   }
 
-  // Если оба движения заблокированы, сбрасываем обе скорости
-  if (entity.vx === 0 && entity.vz === 0) {
-    // Ничего не делаем
+  // ---- Вертикальное движение (гравитация) ----
+  entity.vy -= gravityAccel * dt;
+  const newY = entity.y + entity.vy * dt;
+
+  // Проверяем столкновение по Y (ногами или головой)
+  if (!collidesAt(entity.x, entity.z, newY)) {
+    entity.y = newY;
+    entity.onGround = false;
+  } else {
+    if (entity.vy < 0) {
+      // Приземлились
+      entity.y = Math.floor(entity.y) + 0.1; // фиксируем на поверхности
+      entity.vy = 0;
+      entity.onGround = true;
+    } else {
+      // Ударились головой
+      entity.vy = 0;
+    }
   }
 
-  // Корректируем Y – ставим на поверхность (просто для упрощения)
-  // Пока просто оставляем y как есть (предполагаем, что моб стоит на земле)
-  // В будущем можно добавить гравитацию, но для простоты пусть стоит на месте
+  // Если провалились под мир – телепорт на поверхность
+  if (entity.y < 0) {
+    const groundY = getCachedHeight(Math.floor(entity.x), Math.floor(entity.z));
+    entity.y = groundY + 0.1;
+    entity.vy = 0;
+    entity.onGround = true;
+  }
 }
 
-// Обновление логики моба
+// ---- Движение летающего моба (без гравитации, прямо к игроку по 3D) ----
+function moveMobFlying(entity, targetX, targetY, targetZ, dt) {
+  const dx = targetX - entity.x;
+  const dy = targetY - entity.y;
+  const dz = targetZ - entity.z;
+  const dist = Math.hypot(dx, dy, dz);
+  if (dist < 0.1) return;
+  const speed = entity.walkSpeed;
+  const normDx = dx / dist;
+  const normDy = dy / dist;
+  const normDz = dz / dist;
+  entity.x += normDx * speed * dt;
+  entity.y += normDy * speed * dt;
+  entity.z += normDz * speed * dt;
+  // Не даём улететь под землю
+  if (entity.y < 0) entity.y = 0;
+}
+
+// ---- Обновление логики одного моба ----
 function updateMob(entity, dt) {
   if (entity.type !== 'mob') return;
 
-  // 1. Поиск ближайшего игрока в радиусе 20
+  // Поиск ближайшего игрока в радиусе 20
   let nearestPlayer = null;
   let minDist = Infinity;
   for (const [id, p] of players) {
@@ -970,58 +1025,76 @@ function updateMob(entity, dt) {
   }
 
   if (!nearestPlayer) {
-    // Нет игроков – стоим на месте
-    entity.vx = 0;
-    entity.vz = 0;
+    // Нет игроков – стоим на месте (но для наземных применяем гравитацию)
+    if (entity.gravity > 0) {
+      moveMobGround(entity, 0, 0, dt);
+    }
+    broadcast('entityUpdate', {
+      id: entity.id,
+      x: entity.x,
+      y: entity.y,
+      z: entity.z,
+      yaw: entity.yaw,
+      pitch: entity.pitch,
+    });
     return;
   }
 
-  // 2. Если игрок в пределах дистанции атаки – атакуем
+  // Если игрок в пределах дистанции атаки – атакуем
   const attackDist = entity.damageDistance;
   if (minDist < attackDist) {
-    // Поворачиваемся к игроку
     entity.yaw = Math.atan2(nearestPlayer.x - entity.x, nearestPlayer.z - entity.z);
-    // Атака с кулдауном
     const now = Date.now() / 1000;
     if (now - entity.lastAttackTime >= entity.attackCooldown) {
       entity.lastAttackTime = now;
-      // Наносим урон игроку
       applyDamage(nearestPlayer.id, entity.damage, {
         ax: entity.x,
         az: entity.z,
         kb: 1,
-        attackerId: null, // моб
+        attackerId: null,
         weapon: `моб ${entity.mobType}`,
       });
       broadcast('systemMessage', { message: `Моб ${entity.mobType} атаковал ${players.get(nearestPlayer.id)?.nickname || 'игрока'}` });
     }
-    // Не двигаемся во время атаки
-    entity.vx = 0;
-    entity.vz = 0;
+    // Во время атаки не двигаемся, но для наземных применяем гравитацию
+    if (entity.gravity > 0) {
+      moveMobGround(entity, 0, 0, dt);
+    }
+    broadcast('entityUpdate', {
+      id: entity.id,
+      x: entity.x,
+      y: entity.y,
+      z: entity.z,
+      yaw: entity.yaw,
+      pitch: entity.pitch,
+    });
     return;
   }
 
-  // 3. Иначе двигаемся к игроку
-  const dx = nearestPlayer.x - entity.x;
-  const dz = nearestPlayer.z - entity.z;
-  const dist = Math.hypot(dx, dz);
-  if (dist < 0.1) {
-    entity.vx = 0;
-    entity.vz = 0;
-    return;
+  // ---- Движение к игроку ----
+  if (entity.gravity === 0) {
+    // Летающий – двигаемся по всем трём осям
+    moveMobFlying(entity, nearestPlayer.x, nearestPlayer.y + 0.5, nearestPlayer.z, dt);
+  } else {
+    // Наземный – двигаемся по горизонтали с коллизией, гравитация применяется внутри moveMobGround
+    const dx = nearestPlayer.x - entity.x;
+    const dz = nearestPlayer.z - entity.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist > 0.1) {
+      const speed = entity.walkSpeed;
+      const normDx = dx / dist;
+      const normDz = dz / dist;
+      entity.vx = normDx * speed;
+      entity.vz = normDz * speed;
+      entity.yaw = Math.atan2(dx, dz);
+    } else {
+      entity.vx = 0;
+      entity.vz = 0;
+    }
+    moveMobGround(entity, entity.vx, entity.vz, dt);
   }
-  const speed = entity.walkSpeed;
-  // Нормализуем направление
-  const normDx = dx / dist;
-  const normDz = dz / dist;
-  entity.vx = normDx * speed;
-  entity.vz = normDz * speed;
-  entity.yaw = Math.atan2(dx, dz);
 
-  // Применяем движение с коллизией
-  moveEntityWithCollision(entity, entity.vx, entity.vz, dt);
-
-  // Отправляем обновление позиции моба всем игрокам
+  // Отправляем обновление позиции
   broadcast('entityUpdate', {
     id: entity.id,
     x: entity.x,
@@ -1032,14 +1105,14 @@ function updateMob(entity, dt) {
   });
 }
 
-// Главная функция обновления всех сущностей
+// ---- Главная функция обновления всех сущностей ----
 function updateEntities(dt) {
   for (const entity of entities.values()) {
     if (!entity.alive) continue;
     if (entity.type === 'mob') {
       updateMob(entity, dt);
     } else if (entity.type === 'test_cube') {
-      // Старое движение по кругу для тестовых кубов (можно оставить)
+      // Оставляем старую логику для тестовых кубов (для примера)
       const speed = 1.5;
       const radius = 4;
       if (!entity.data.angle) entity.data.angle = 0;
@@ -1067,7 +1140,6 @@ function updateEntities(dt) {
 
 // ========== Дополнительные функции для управления мобами ==========
 
-// Создание моба с параметрами (строка или объект)
 function spawnMob(x, y, z, mobData) {
   if (typeof mobData === 'string') {
     mobData = parseMobData(mobData);
@@ -1076,14 +1148,13 @@ function spawnMob(x, y, z, mobData) {
   return spawnEntity('mob', x, y, z, mobData);
 }
 
-// Команда для спавна моба через чат (на сервере)
 function handleSpawnMobCommand(senderId, args) {
   const player = players.get(senderId);
   if (!player) return;
   const x = player.x + 2;
   const z = player.z + 2;
   const y = getCachedHeight(Math.floor(x), Math.floor(z)) + 1;
-  let mobData = 'mob:zombie,health:30,max_health:30,walk_speed:3,damage:3,damage_distance:2';
+  let mobData = 'mob:zombie,health:30,max_health:30,walk_speed:3,damage:3,damage_distance:2,gravity:1';
   if (args.length > 0) {
     mobData = args.join(' ');
   }
@@ -1092,16 +1163,15 @@ function handleSpawnMobCommand(senderId, args) {
 }
 
 // ========== Инициализация тестовых мобов ==========
-// Удаляем старые тестовые кубы и создаём мобов
-for (let i = 0; i < 3; i++) {
-  const angle = (i / 3) * Math.PI * 2;
-  const radius = 8 + i * 2;
-  const x = Math.cos(angle) * radius;
-  const z = Math.sin(angle) * radius;
-  const y = getCachedHeight(Math.floor(x), Math.floor(z)) + 1;
-  const mobType = i % 2 === 0 ? 'zombie' : 'skeleton';
-  const hp = 30 + i * 10;
-  spawnMob(x, y, z, `mob:${mobType},health:${hp},max_health:${hp},walk_speed:${2 + i * 0.5},damage:${3 + i}`);
+// Создаём нескольких мобов разных типов
+const testMobs = [
+  { x: 5, z: 5, data: 'mob:zombie,health:30,walk_speed:2.5,damage:4,gravity:1' },
+  { x: -5, z: -5, data: 'mob:skeleton,health:20,walk_speed:4,damage:5,damage_distance:6,gravity:1' },
+  { x: 10, z: -5, data: 'mob:ghost,health:15,walk_speed:3,damage:3,damage_distance:3,gravity:0' },
+];
+for (const m of testMobs) {
+  const y = getCachedHeight(Math.floor(m.x), Math.floor(m.z)) + 1;
+  spawnMob(m.x, y, m.z, m.data);
 }
 
 // ==================== WebSocket СЕРВЕР ====================
