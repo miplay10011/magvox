@@ -756,7 +756,7 @@ function generateBamboo(editsMap, cx, cz, groundY) {
   }
 }
 
-// ==================== СУЩНОСТИ (с гравитацией и прыжками) ====================
+// ==================== СУЩНОСТИ (с гравитацией, прыжками и универсальным слиянием) ====================
 let nextEntityId = 1;
 const entities = new Map();
 
@@ -772,8 +772,9 @@ const MOB_TYPES = {
     width: 0.6,
     height: 1.8,
     color: 0x44aa44,
-    gravity: 1,          // 1 – наземный, 0 – летающий
-    jumpPower: 12.0,      // сила прыжка
+    gravity: 1,
+    jumpPower: 12.0,
+    slimeSize: 0,          // 0 – не сливается
   },
   skeleton: {
     health: 20,
@@ -787,6 +788,7 @@ const MOB_TYPES = {
     color: 0xcccccc,
     gravity: 1,
     jumpPower: 12.0,
+    slimeSize: 0,
   },
   ghost: {
     health: 15,
@@ -798,10 +800,24 @@ const MOB_TYPES = {
     width: 0.6,
     height: 1.8,
     color: 0x88aaff,
-    gravity: 0,          // летающий
+    gravity: 0,
     jumpPower: 0,
+    slimeSize: 0,
   },
-  // можно добавить другие
+  slime: {
+    health: 20,
+    maxHealth: 20,
+    walkSpeed: 1.5,
+    damage: 2.0,
+    damageDistance: 1.5,
+    attackCooldown: 1.0,
+    width: 0.6,
+    height: 0.6,
+    color: 0x88dd88,
+    gravity: 1,
+    jumpPower: 8.0,
+    slimeSize: 1.0,        // по умолчанию 1 – сливается
+  },
 };
 
 class Entity {
@@ -832,11 +848,14 @@ class Entity {
       this.damage = mobData.damage ?? defaults.damage;
       this.damageDistance = mobData.damageDistance ?? defaults.damageDistance;
       this.attackCooldown = mobData.attackCooldown ?? defaults.attackCooldown;
-      this.width = mobData.width ?? defaults.width;
-      this.height = mobData.height ?? defaults.height;
+      // Размеры умножаются на slimeSize (если slimeSize > 0, иначе оставляем как есть)
+      const sizeFactor = mobData.slimeSize ?? defaults.slimeSize ?? 0;
+      this.width = (mobData.width ?? defaults.width) * (sizeFactor > 0 ? sizeFactor : 1);
+      this.height = (mobData.height ?? defaults.height) * (sizeFactor > 0 ? sizeFactor : 1);
       this.color = mobData.color ?? defaults.color;
       this.gravity = mobData.gravity ?? defaults.gravity ?? 1;
       this.jumpPower = mobData.jumpPower ?? defaults.jumpPower ?? 12.0;
+      this.slimeSize = sizeFactor;  // 0 или положительное число
       this.lastAttackTime = 0;
       this.onGround = false;
     } else {
@@ -846,7 +865,7 @@ class Entity {
   }
 }
 
-// Парсер строки вида "mob:zombie,health:30f,max_health:30,walk_speed:3f,damage:3f,damage_distance:5f,gravity:0"
+// Парсер строки вида "mob:zombie,health:30,max_health:30,walk_speed:3,damage:3,damage_distance:5,gravity:0,slimeSize:2"
 function parseMobData(str) {
   const result = {};
   const parts = str.split(',');
@@ -884,6 +903,7 @@ function spawnEntity(type, x, y, z, data = {}) {
       width: entity.width,
       height: entity.height,
       gravity: entity.gravity,
+      slimeSize: entity.slimeSize,
     } : entity.data,
   });
   return entity.id;
@@ -916,7 +936,6 @@ function moveMobGround(entity, dx, dz, dt) {
   const height = entity.height;
   const gravityAccel = 20.0;
 
-  // Проверка столкновения с блоками в заданной позиции (x, z) на уровне y
   function collidesAt(x, z, y) {
     const minX = Math.floor(x - halfW);
     const maxX = Math.floor(x + halfW);
@@ -934,21 +953,18 @@ function moveMobGround(entity, dx, dz, dt) {
     return false;
   }
 
-  // ---- Горизонтальное движение ----
-  // Пробуем X
+  // Горизонталь
   const newX = entity.x + dx * dt;
   if (!collidesAt(newX, entity.z, entity.y)) {
     entity.x = newX;
   } else {
     entity.vx = 0;
-    // Если упёрлись в блок и стоим на земле – прыгаем
     if (entity.onGround && entity.jumpPower > 0) {
       entity.vy = entity.jumpPower;
       entity.onGround = false;
     }
   }
 
-  // Пробуем Z
   const newZ = entity.z + dz * dt;
   if (!collidesAt(entity.x, newZ, entity.y)) {
     entity.z = newZ;
@@ -960,27 +976,22 @@ function moveMobGround(entity, dx, dz, dt) {
     }
   }
 
-  // ---- Вертикальное движение (гравитация) ----
+  // Вертикаль
   entity.vy -= gravityAccel * dt;
   const newY = entity.y + entity.vy * dt;
-
-  // Проверяем столкновение по Y (ногами или головой)
   if (!collidesAt(entity.x, entity.z, newY)) {
     entity.y = newY;
     entity.onGround = false;
   } else {
     if (entity.vy < 0) {
-      // Приземлились
-      entity.y = Math.floor(entity.y) + 0.1; // фиксируем на поверхности
+      entity.y = Math.floor(entity.y) + 0.1;
       entity.vy = 0;
       entity.onGround = true;
     } else {
-      // Ударились головой
       entity.vy = 0;
     }
   }
 
-  // Если провалились под мир – телепорт на поверхность
   if (entity.y < 0) {
     const groundY = getCachedHeight(Math.floor(entity.x), Math.floor(entity.z));
     entity.y = groundY + 0.1;
@@ -989,7 +1000,7 @@ function moveMobGround(entity, dx, dz, dt) {
   }
 }
 
-// ---- Движение летающего моба (без гравитации, прямо к игроку по 3D) ----
+// ---- Движение летающего моба ----
 function moveMobFlying(entity, targetX, targetY, targetZ, dt) {
   const dx = targetX - entity.x;
   const dy = targetY - entity.y;
@@ -1003,15 +1014,79 @@ function moveMobFlying(entity, targetX, targetY, targetZ, dt) {
   entity.x += normDx * speed * dt;
   entity.y += normDy * speed * dt;
   entity.z += normDz * speed * dt;
-  // Не даём улететь под землю
   if (entity.y < 0) entity.y = 0;
+}
+
+// ---- Универсальное слияние мобов (если у обоих slimeSize > 0) ----
+function mergeMobs(entity, dt) {
+  if (entity.slimeSize <= 0) return false; // этот моб не сливается
+
+  // Ищем другого моба с slimeSize > 0 в радиусе 2 блоков
+  let target = null;
+  for (const [id, e] of entities) {
+    if (e.id === entity.id || !e.alive || e.type !== 'mob') continue;
+    if (e.slimeSize <= 0) continue; // у второго тоже должен быть slimeSize > 0
+    const dist = Math.hypot(e.x - entity.x, e.z - entity.z);
+    if (dist < 2.0) {
+      target = e;
+      break;
+    }
+  }
+  if (!target) return false;
+
+  // Объединяем: создаём нового слизня с суммой статов
+  const newSize = entity.slimeSize + target.slimeSize;
+  const newHealth = Math.min(entity.hp + target.hp, entity.maxHp + target.maxHp);
+  const newMaxHealth = entity.maxHp + target.maxHp;
+  const newJump = Math.max(entity.jumpPower, target.jumpPower) + 0.5 * newSize;
+  const newDamage = Math.max(entity.damage, target.damage) + 0.5 * newSize;
+  const newWalkSpeed = Math.min(3.0, (entity.walkSpeed + target.walkSpeed) / 2 + 0.2 * newSize);
+
+  // Позиция – средняя между двумя
+  const midX = (entity.x + target.x) / 2;
+  const midZ = (entity.z + target.z) / 2;
+  const midY = (entity.y + target.y) / 2;
+
+  // Запоминаем типы для сообщения
+  const type1 = entity.mobType;
+  const type2 = target.mobType;
+
+  // Удаляем обоих
+  despawnEntity(entity.id);
+  despawnEntity(target.id);
+
+  // Создаём нового слизня
+  const newData = {
+    mobType: 'slime',        // всегда становится слизнем
+    health: newHealth,
+    maxHealth: newMaxHealth,
+    walkSpeed: newWalkSpeed,
+    damage: newDamage,
+    slimeSize: newSize,
+    color: 0x88dd88,
+    jumpPower: newJump,
+    gravity: 1,
+  };
+  const newId = spawnMob(midX, midY, midZ, newData);
+  broadcast('systemMessage', { message: `${type1} и ${type2} слились! Размер: ${newSize.toFixed(1)}` });
+  return true;
 }
 
 // ---- Обновление логики одного моба ----
 function updateMob(entity, dt) {
   if (entity.type !== 'mob') return;
 
-  // Поиск ближайшего игрока в радиусе 20
+  // Проверка слияния для любого моба с slimeSize > 0 (раз в секунду)
+  if (entity.slimeSize > 0) {
+    if (!entity._mergeCooldown) entity._mergeCooldown = 0;
+    entity._mergeCooldown -= dt;
+    if (entity._mergeCooldown <= 0) {
+      entity._mergeCooldown = 1.0;
+      if (mergeMobs(entity, dt)) return; // если слились, этот моб уже удалён
+    }
+  }
+
+  // Поиск ближайшего игрока
   let nearestPlayer = null;
   let minDist = Infinity;
   for (const [id, p] of players) {
@@ -1025,10 +1100,7 @@ function updateMob(entity, dt) {
   }
 
   if (!nearestPlayer) {
-    // Нет игроков – стоим на месте (но для наземных применяем гравитацию)
-    if (entity.gravity > 0) {
-      moveMobGround(entity, 0, 0, dt);
-    }
+    if (entity.gravity > 0) moveMobGround(entity, 0, 0, dt);
     broadcast('entityUpdate', {
       id: entity.id,
       x: entity.x,
@@ -1040,7 +1112,7 @@ function updateMob(entity, dt) {
     return;
   }
 
-  // Если игрок в пределах дистанции атаки – атакуем
+  // Атака
   const attackDist = entity.damageDistance;
   if (minDist < attackDist) {
     entity.yaw = Math.atan2(nearestPlayer.x - entity.x, nearestPlayer.z - entity.z);
@@ -1056,10 +1128,7 @@ function updateMob(entity, dt) {
       });
       broadcast('systemMessage', { message: `Моб ${entity.mobType} атаковал ${players.get(nearestPlayer.id)?.nickname || 'игрока'}` });
     }
-    // Во время атаки не двигаемся, но для наземных применяем гравитацию
-    if (entity.gravity > 0) {
-      moveMobGround(entity, 0, 0, dt);
-    }
+    if (entity.gravity > 0) moveMobGround(entity, 0, 0, dt);
     broadcast('entityUpdate', {
       id: entity.id,
       x: entity.x,
@@ -1071,12 +1140,10 @@ function updateMob(entity, dt) {
     return;
   }
 
-  // ---- Движение к игроку ----
+  // Движение
   if (entity.gravity === 0) {
-    // Летающий – двигаемся по всем трём осям
     moveMobFlying(entity, nearestPlayer.x, nearestPlayer.y + 0.5, nearestPlayer.z, dt);
   } else {
-    // Наземный – двигаемся по горизонтали с коллизией, гравитация применяется внутри moveMobGround
     const dx = nearestPlayer.x - entity.x;
     const dz = nearestPlayer.z - entity.z;
     const dist = Math.hypot(dx, dz);
@@ -1094,7 +1161,6 @@ function updateMob(entity, dt) {
     moveMobGround(entity, entity.vx, entity.vz, dt);
   }
 
-  // Отправляем обновление позиции
   broadcast('entityUpdate', {
     id: entity.id,
     x: entity.x,
@@ -1112,7 +1178,7 @@ function updateEntities(dt) {
     if (entity.type === 'mob') {
       updateMob(entity, dt);
     } else if (entity.type === 'test_cube') {
-      // Оставляем старую логику для тестовых кубов (для примера)
+      // тестовые кубы (можно оставить для отладки)
       const speed = 1.5;
       const radius = 4;
       if (!entity.data.angle) entity.data.angle = 0;
@@ -1145,6 +1211,11 @@ function spawnMob(x, y, z, mobData) {
     mobData = parseMobData(mobData);
   }
   if (!mobData.mobType) mobData.mobType = 'zombie';
+  // Убедимся, что slimeSize установлен (если не указан, будет 0)
+  if (mobData.slimeSize === undefined) {
+    const defaults = MOB_TYPES[mobData.mobType] || MOB_TYPES.zombie;
+    mobData.slimeSize = defaults.slimeSize || 0;
+  }
   return spawnEntity('mob', x, y, z, mobData);
 }
 
@@ -1154,7 +1225,7 @@ function handleSpawnMobCommand(senderId, args) {
   const x = player.x + 2;
   const z = player.z + 2;
   const y = getCachedHeight(Math.floor(x), Math.floor(z)) + 1;
-  let mobData = 'mob:zombie,health:30,max_health:30,walk_speed:3,damage:3,damage_distance:2,gravity:1';
+  let mobData = 'mob:zombie,health:30,max_health:30,walk_speed:3,damage:3,damage_distance:2,gravity:1,slimeSize:0';
   if (args.length > 0) {
     mobData = args.join(' ');
   }
@@ -1163,11 +1234,16 @@ function handleSpawnMobCommand(senderId, args) {
 }
 
 // ========== Инициализация тестовых мобов ==========
-// Создаём нескольких мобов разных типов
+// Создаём несколько мобов разных типов, включая слизней и мобов с slimeSize > 0
 const testMobs = [
-  { x: 5, z: 5, data: 'mob:zombie,health:30,walk_speed:2.5,damage:4,gravity:1' },
-  { x: -5, z: -5, data: 'mob:skeleton,health:20,walk_speed:4,damage:5,damage_distance:6,gravity:1' },
-  { x: 10, z: -5, data: 'mob:ghost,health:15,walk_speed:3,damage:3,damage_distance:3,gravity:0' },
+  { x: 5, z: 5, data: 'mob:zombie,health:30,walk_speed:2.5,damage:4,gravity:1,slimeSize:0' },
+  { x: -5, z: -5, data: 'mob:skeleton,health:20,walk_speed:4,damage:5,damage_distance:6,gravity:1,slimeSize:0' },
+  { x: 10, z: -5, data: 'mob:ghost,health:15,walk_speed:3,damage:3,damage_distance:3,gravity:0,slimeSize:0' },
+  // Два слизня с slimeSize > 0 – они сольются
+  { x: -8, z: 8, data: 'mob:slime,health:20,slimeSize:1.0,damage:2,walk_speed:1.5,gravity:1' },
+  { x: -6, z: 10, data: 'mob:slime,health:15,slimeSize:0.8,damage:1.5,walk_speed:1.2,gravity:1' },
+  // Дополнительный зомби с slimeSize > 0 – он тоже сможет сливаться со слизнями
+  { x: -2, z: 12, data: 'mob:zombie,health:40,slimeSize:1.2,damage:6,walk_speed:2,gravity:1' },
 ];
 for (const m of testMobs) {
   const y = getCachedHeight(Math.floor(m.x), Math.floor(m.z)) + 1;

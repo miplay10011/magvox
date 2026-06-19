@@ -926,12 +926,13 @@ const EVENTS = {
     createEntityFromData(m);
   },
   entityUpdate: (m) => {
-    const ent = remoteEntities.get(m.id);
-    if (!ent) return;
-    ent.targetPos.set(m.x, m.y, m.z);
-    if (m.yaw !== undefined) ent.targetYaw = m.yaw;
-    if (m.pitch !== undefined) ent.targetPitch = m.pitch;
-  },
+  const ent = remoteEntities.get(m.id);
+  if (!ent) return;
+  // Обновляем целевую позицию (центр меша) с учётом высоты
+  ent.targetPos.set(m.x, m.y + ent.height / 2, m.z);
+  if (m.yaw !== undefined) ent.targetYaw = m.yaw;
+  if (m.pitch !== undefined) ent.targetPitch = m.pitch;
+},
   entityDespawn: (m) => {
     const ent = remoteEntities.get(m.id);
     if (!ent) return;
@@ -967,24 +968,30 @@ let shieldMesh = null;
 const remoteEntities = new Map();
 
 function createEntityFromData(data) {
-  // Универсальное получение цвета: из data.data.color, из data.color, или дефолт
+  // Цвет
   const color = data.data?.color ?? data.color ?? 0x44aaff;
+  // Размеры (передаются сервером)
+  const width = data.data?.width ?? data.width ?? 0.6;
+  const height = data.data?.height ?? data.height ?? 0.6;
   
-  // Для отладки (можно удалить после проверки)
-  console.log(`[Entity] ID: ${data.id}, color: ${color.toString(16)}, data:`, data);
+  console.log(`[Entity] ID: ${data.id}, size: ${width}x${height}, color: ${color.toString(16)}`);
   
-  const geo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+  const geo = new THREE.BoxGeometry(width, height, width);
   const mat = new THREE.MeshStandardMaterial({ color });
   const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(data.x, data.y, data.z);
+  // Центр меша – на половине высоты выше ног
+  const centerY = data.y + height / 2;
+  mesh.position.set(data.x, centerY, data.z);
   mesh.rotation.y = data.yaw || 0;
   mesh.rotation.x = data.pitch || 0;
   scene.add(mesh);
+  
   remoteEntities.set(data.id, {
     mesh,
-    targetPos: new THREE.Vector3(data.x, data.y, data.z),
+    targetPos: new THREE.Vector3(data.x, centerY, data.z),
     targetYaw: data.yaw || 0,
     targetPitch: data.pitch || 0,
+    height: height, // запоминаем для обновления позиции
   });
 }
 
