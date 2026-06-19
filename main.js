@@ -1225,7 +1225,9 @@ chatInput.addEventListener('keypress', (e) => {
         net.send('shadow_step', {});
         addChatMessage('Система', 'Теневой шаг активирован');
       } else {
-        addChatMessage('Система', `Неизвестная команда: ${message}`);
+        // Отправляем команду на сервер для обработки
+        net.send('chat', { message: message });
+        // Не добавляем сообщение локально — сервер вернёт ответ через systemMessage
       }
       chatInput.value = '';
       chatInput.blur();
