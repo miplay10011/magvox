@@ -921,7 +921,7 @@ const EVENTS = {
     setTimeout(() => scene.remove(ring), (m.duration || 15) * 1000);
   },
 
-  // ========== СОБЫТИЯ СУЩНОСТЕЙ (добавлено) ==========
+  // ========== СОБЫТИЯ СУЩНОСТЕЙ ==========
   entitySpawn: (m) => {
     createEntityFromData(m);
   },
@@ -939,6 +939,14 @@ const EVENTS = {
     ent.mesh.geometry.dispose();
     ent.mesh.material.dispose();
     remoteEntities.delete(m.id);
+  },
+  entityHp: (m) => {
+    // Визуальное отображение здоровья моба (можно расширить)
+    const ent = remoteEntities.get(m.id);
+    if (ent) {
+      // Просто лог в консоль, можно добавить индикатор над мобом
+      console.log(`Моб ${m.id} HP: ${m.hp}/${m.maxHp}`);
+    }
   },
 };
 for (const [t, f] of Object.entries(EVENTS)) net.on(t, f);
@@ -984,6 +992,34 @@ function updateRemoteEntities(dt) {
   }
 }
 
+// ========== Raycast для игроков и сущностей (добавлен) ==========
+function raycastEntities(maxDist) {
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  const raycaster = new THREE.Raycaster(camera.position, dir, 0, maxDist);
+
+  let best = null;
+
+  // Проверяем игроков
+  for (const [id, rp] of remotePlayers) {
+    const hits = raycaster.intersectObject(rp.group, true);
+    if (hits.length && (!best || hits[0].distance < best.dist)) {
+      best = { type: 'player', id, dist: hits[0].distance };
+    }
+  }
+
+  // Проверяем сущности (мобов)
+  for (const [id, ent] of remoteEntities) {
+    if (!ent.mesh) continue;
+    const hits = raycaster.intersectObject(ent.mesh, true);
+    if (hits.length && (!best || hits[0].distance < best.dist)) {
+      best = { type: 'entity', id, dist: hits[0].distance };
+    }
+  }
+
+  return best;
+}
+
 net.on('init', (m) => {
   myId = m.id;
   myNickname = m.nickname;
@@ -995,7 +1031,6 @@ net.on('init', (m) => {
   }
   if (m.zones) m.zones.forEach(z => EVENTS.zoneSpawn(z));
   if (m.timeSlowZones) m.timeSlowZones.forEach(z => EVENTS.timeSlowZone(z));
-  // Добавляем сущности из инициализации
   if (m.entities) {
     for (const e of m.entities) createEntityFromData(e);
   }
@@ -1427,8 +1462,11 @@ bindMobileButton('btn-attack', () => {
   if (!combatMode) return;
   if (spellQueue.length) castSpell('left');
   else {
-    const target = raycastPlayers(4.5);
-    if (target) net.send('attack', { target: target.id });
+    const target = raycastEntities(4.5);
+    if (target) {
+      if (target.type === 'player') net.send('attack', { target: target.id });
+      else if (target.type === 'entity') net.send('attackEntity', { entityId: target.id });
+    }
   }
 });
 bindMobileButton('btn-descend', () => {
@@ -1448,8 +1486,11 @@ bindMobileButton('btn-settings', () => { toggleSettings(true); });
 bindMobileButton('btn-combat', () => { combatMode = !combatMode; spellQueue.length = 0; refreshQueueUI(); ringEl.classList.toggle('combat', combatMode); });
 bindMobileButton('btn-break', () => {
   if (combatMode) {
-    const target = raycastPlayers(4.5);
-    if (target) { net.send('attack', { target: target.id }); }
+    const target = raycastEntities(4.5);
+    if (target) {
+      if (target.type === 'player') net.send('attack', { target: target.id });
+      else if (target.type === 'entity') net.send('attackEntity', { entityId: target.id });
+    }
     else if (spellQueue.length) castSpell('left');
   } else {
     const hit = raycastBlock(5);
@@ -1784,19 +1825,8 @@ function raycastBlock(maxDist = 5) {
 
 const playerRaycaster = new THREE.Raycaster();
 function raycastPlayers(maxDist) {
-  if (!remotePlayers.size) return null;
-  const dir = new THREE.Vector3();
-  camera.getWorldDirection(dir);
-  playerRaycaster.set(camera.position, dir);
-  playerRaycaster.far = maxDist;
-  let best = null;
-  for (const [id, rp] of remotePlayers) {
-    const hits = playerRaycaster.intersectObject(rp.group, true);
-    if (hits.length && (!best || hits[0].distance < best.dist)) {
-      best = { id, dist: hits[0].distance };
-    }
-  }
-  return best;
+  // Устаревшая функция, используйте raycastEntities
+  return raycastEntities(maxDist);
 }
 
 function intersectsPlayer(bx, by, bz) {
@@ -1991,7 +2021,13 @@ document.addEventListener('mousedown', (e) => {
   if (combatMode) {
     if (e.button === 0) {
       if (spellQueue.length) castSpell('left');
-      else { const t = raycastPlayers(4.5); if (t) net.send('attack', { target: t.id }); }
+      else {
+        const target = raycastEntities(4.5);
+        if (target) {
+          if (target.type === 'player') net.send('attack', { target: target.id });
+          else if (target.type === 'entity') net.send('attackEntity', { entityId: target.id });
+        }
+      }
     } else if (e.button === 2) {
       if (spellQueue.length) castSpell('right');
     }
@@ -2000,9 +2036,13 @@ document.addEventListener('mousedown', (e) => {
 
   const hit = raycastBlock(5);
   if (e.button === 0) {
-    const target = raycastPlayers(4.5);
+    const target = raycastEntities(4.5);
     if (target && (!hit || target.dist < hit.dist)) {
-      net.send('attack', { target: target.id });
+      if (target.type === 'player') {
+        net.send('attack', { target: target.id });
+      } else if (target.type === 'entity') {
+        net.send('attackEntity', { entityId: target.id });
+      }
       return;
     }
     if (!hit) return;

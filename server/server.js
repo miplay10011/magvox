@@ -1113,7 +1113,20 @@ function broadcast(type, data, exceptId = null) {
 }
 function syncEffects(q) { send(q.ws,'effects',{list:[...q.effects].map(([e,v])=>({e,until:v.until,power:v.power}))}); }
 
+// ==================================================================
+//                   НОВАЯ ФУНКЦИЯ applyDamage (с поддержкой мобов)
+// ==================================================================
 function applyDamage(targetId, dmg, src = {}) {
+  // Обработка мобов (если targetId строка вида mob_123)
+  if (typeof targetId === 'string' && targetId.startsWith('mob_')) {
+    const entityId = parseInt(targetId.slice(4), 10);
+    const entity = entities.get(entityId);
+    if (!entity || !entity.alive || entity.type !== 'mob') return;
+    damageEntity(entityId, dmg, src);
+    return;
+  }
+
+  // Далее оригинальный код для игроков
   const target = players.get(targetId);
   if (!target) return;
   const attackerId = src.attackerId;
@@ -1262,11 +1275,22 @@ function flushBlockBroadcasts() {
   else if (blocks.length > 1) broadcast('blocksUpdate', { blocks });
 }
 
+// ==================================================================
+//                   НОВЫЙ magicCtx (с поддержкой мобов)
+// ==================================================================
 const magicCtx = {
   getBlock: getBlockType,
   setBlock: queueBlockUpdate,
   terrainHeight: getCachedHeight,
-  getPlayers: () => [...players].map(([id, q]) => [id, { x: q.x, y: q.y, z: q.z }]),
+  getPlayers: () => {
+    const result = [...players].map(([id, q]) => [id, { x: q.x, y: q.y, z: q.z, hp: q.hp }]);
+    for (const [id, e] of entities) {
+      if (e.alive && e.type === 'mob') {
+        result.push([`mob_${id}`, { x: e.x, y: e.y, z: e.z, hp: e.hp, isMob: true }]);
+      }
+    }
+    return result;
+  },
   applyDamage,
   addEffect(id, type, dur, power) {
     const q = players.get(id); if (!q) return;
@@ -1510,7 +1534,7 @@ wss.on('connection', (ws) => {
     })),
     zones: [...activeZones].map(([zid, z]) => ({ id: zid, x: z.x, z: z.z, radius: z.radius, effect: z.effect })),
     timeSlowZones: [...timeSlowZones].map(([zid, z]) => ({ id: zid, x: z.x, z: z.z, radius: z.radius, duration: (z.endTime - Date.now()) / 1000 })),
-    entities: [...entities.values()].map(e => ({   // добавлено
+    entities: [...entities.values()].map(e => ({
       id: e.id,
       type: e.type,
       x: e.x, y: e.y, z: e.z,
@@ -1553,11 +1577,17 @@ wss.on('connection', (ws) => {
     } else if (msg.type === 'swap_positions') {
       const target = players.get(msg.target);
       if (target && Math.hypot(q.x - target.x, q.z - target.z) < 10) magicCtx.swapPositions(id, msg.target);
-    } else if (msg.type === 'spawnEntity') {   // добавлено (опционально)
+    } else if (msg.type === 'spawnEntity') {
       const x = q.x + (Math.random() - 0.5) * 4;
       const z = q.z + (Math.random() - 0.5) * 4;
       const y = q.y + 1;
       spawnEntity('test_cube', x, y, z, { color: Math.random() * 0xffffff });
+    // ========== НОВЫЙ ОБРАБОТЧИК АТАКИ ПО СУЩНОСТИ ==========
+    } else if (msg.type === 'attackEntity') {
+      const entity = entities.get(msg.entityId);
+      if (!entity || !entity.alive || entity.type !== 'mob') return;
+      // Урон от игрока (базовый 4, можно изменить)
+      damageEntity(msg.entityId, 4, { attackerId: id, weapon: 'меч' });
     }
   });
 
