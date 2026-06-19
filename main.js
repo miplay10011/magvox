@@ -967,7 +967,12 @@ let shieldMesh = null;
 const remoteEntities = new Map();
 
 function createEntityFromData(data) {
-  const color = data.data?.color || 0x44aaff;
+  // Универсальное получение цвета: из data.data.color, из data.color, или дефолт
+  const color = data.data?.color ?? data.color ?? 0x44aaff;
+  
+  // Для отладки (можно удалить после проверки)
+  console.log(`[Entity] ID: ${data.id}, color: ${color.toString(16)}, data:`, data);
+  
   const geo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
   const mat = new THREE.MeshStandardMaterial({ color });
   const mesh = new THREE.Mesh(geo, mat);

@@ -773,7 +773,7 @@ const MOB_TYPES = {
     height: 1.8,
     color: 0x44aa44,
     gravity: 1,          // 1 – наземный, 0 – летающий
-    jumpPower: 6.0,      // сила прыжка
+    jumpPower: 12.0,      // сила прыжка
   },
   skeleton: {
     health: 20,
@@ -786,7 +786,7 @@ const MOB_TYPES = {
     height: 1.8,
     color: 0xcccccc,
     gravity: 1,
-    jumpPower: 5.0,
+    jumpPower: 12.0,
   },
   ghost: {
     health: 15,
@@ -836,7 +836,7 @@ class Entity {
       this.height = mobData.height ?? defaults.height;
       this.color = mobData.color ?? defaults.color;
       this.gravity = mobData.gravity ?? defaults.gravity ?? 1;
-      this.jumpPower = mobData.jumpPower ?? defaults.jumpPower ?? 6.0;
+      this.jumpPower = mobData.jumpPower ?? defaults.jumpPower ?? 12.0;
       this.lastAttackTime = 0;
       this.onGround = false;
     } else {
