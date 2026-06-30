@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { createMagicEngine } from './magic.js';
+import { createMagicEngine } from '../magic.js';
 
 process.on('uncaughtException', (err) => console.error('❌ Uncaught Exception:', err));
 
