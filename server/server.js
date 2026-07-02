@@ -21,7 +21,7 @@ const httpServer = http.createServer((req, res) => {
   });
 });
 
-// ==================== БЛОКИ ====================
+// ==================== БЛОКИ (совместимость с world.js) ====================
 const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, WOOD = 4, LEAVES = 5;
 const PLANKS = 6, SAND = 7, GRAVEL = 8, COAL_ORE = 9, IRON_ORE = 10;
 const ICE = 11, SNOW_BLOCK = 12, CACTUS = 13;
@@ -31,6 +31,7 @@ const MAGMA = 24, SOUL_SAND = 25, HONEY = 26, SLIME = 27, BAMBOO = 28;
 const CHERRY_LOG = 29, CHERRY_LEAVES = 30, MUSHROOM_STEM = 31;
 const RED_MUSHROOM = 32, BROWN_MUSHROOM = 33, CORAL = 34, SPONGE = 35;
 const MYCELIUM = 36, TERRACOTTA = 37, PACKED_ICE = 38;
+
 const WORLD_HEIGHT = 128;
 
 // ==================== НИКНЕЙМЫ ====================
@@ -100,27 +101,71 @@ function terrainHeight(wx, wz) {
   h += noise(wx/25+seed, wz/25+seed, 100) * 8;
   h += noise(wx/10+seed, wz/10+seed, 200) * 3;
   const biome = getBiome(wx, wz);
-  if (biome === 'desert') { h = 28 + noise(wx/40+seed, wz/40+seed, 400) * 4; h = Math.max(24, Math.min(35, h)); }
-  else if (biome === 'mountain') { h += noise(wx/15+seed, wz/15+seed, 150) * 25; h += Math.abs(noise(wx/5+seed, wz/5+seed, 250)) * 15; h = Math.max(50, Math.min(WORLD_HEIGHT - 10, h)); }
-  else if (biome === 'ice') { h = 25 + noise(wx/35+seed, wz/35+seed, 500) * 5; h = Math.max(20, Math.min(32, h)); }
-  else if (biome === 'snow') { h = 27 + noise(wx/30+seed, wz/30+seed, 550) * 6; h = Math.max(22, Math.min(38, h)); }
-  else if (biome === 'swamp') { h = 21 + noise(wx/20+seed, wz/20+seed, 600) * 4; h = Math.max(18, Math.min(28, h)); }
-  else if (biome === 'savanna') { h = 29 + noise(wx/25+seed, wz/25+seed, 650) * 7; h = Math.max(26, Math.min(42, h)); }
-  else if (biome === 'coral_reef') { h = 18 + noise(wx/18+seed, wz/18+seed, 700) * 5; h = Math.max(15, Math.min(24, h)); }
-  else if (biome === 'mushroom') { h = 23 + noise(wx/22+seed, wz/22+seed, 750) * 6; h = Math.max(20, Math.min(32, h)); }
-  else if (biome === 'cherry_grove') { h = 26 + noise(wx/28+seed, wz/28+seed, 800) * 7; h = Math.max(22, Math.min(38, h)); }
-  else if (biome === 'bamboo_forest') { h = 27 + noise(wx/24+seed, wz/24+seed, 850) * 6; h = Math.max(24, Math.min(40, h)); }
-  else if (biome === 'volcanic') { h = 45 + Math.abs(noise(wx/12+seed, wz/12+seed, 900)) * 25; h = Math.max(55, Math.min(WORLD_HEIGHT - 8, h)); }
-  else if (biome === 'soul_sand_valley') { h = 32 + noise(wx/18+seed, wz/18+seed, 950) * 10; h = Math.max(30, Math.min(48, h)); }
-  else if (biome === 'end_highlands') { h = 38 + noise(wx/16+seed, wz/16+seed, 1000) * 15; h = Math.max(35, Math.min(60, h)); }
-  else if (biome === 'nether_wastes') { h = 35 + noise(wx/20+seed, wz/20+seed, 1050) * 12; h = Math.max(32, Math.min(55, h)); }
-  else if (biome === 'oasis') { h = 26 + noise(wx/22+seed, wz/22+seed, 1100) * 4; h = Math.max(24, Math.min(34, h)); }
-  else if (biome === 'ice_spikes') { h = 28 + noise(wx/20+seed, wz/20+seed, 1150) * 10; h = Math.max(25, Math.min(45, h)); }
-  else if (biome === 'taiga') { h = 28 + noise(wx/25+seed, wz/25+seed, 1200) * 7; h = Math.max(24, Math.min(42, h)); }
-  else if (biome === 'mesa') { h = 35 + noise(wx/18+seed, wz/18+seed, 1250) * 12; h = Math.max(30, Math.min(58, h)); }
-  else if (biome === 'jungle') { h = 24 + noise(wx/20+seed, wz/20+seed, 1350) * 10; h = Math.max(20, Math.min(48, h)); }
-  else if (biome === 'dark_forest') { h = 26 + noise(wx/22+seed, wz/22+seed, 1400) * 8; h = Math.max(22, Math.min(44, h)); }
-  else { h += noise(wx/25+seed, wz/25+seed, 300) * 8; h = Math.max(20, Math.min(50, h)); }
+  if (biome === 'desert') {
+    h = 28 + noise(wx/40+seed, wz/40+seed, 400) * 4;
+    h = Math.max(24, Math.min(35, h));
+  } else if (biome === 'mountain') {
+    h += noise(wx/15+seed, wz/15+seed, 150) * 25;
+    h += Math.abs(noise(wx/5+seed, wz/5+seed, 250)) * 15;
+    h = Math.max(50, Math.min(WORLD_HEIGHT - 10, h));
+  } else if (biome === 'ice') {
+    h = 25 + noise(wx/35+seed, wz/35+seed, 500) * 5;
+    h = Math.max(20, Math.min(32, h));
+  } else if (biome === 'snow') {
+    h = 27 + noise(wx/30+seed, wz/30+seed, 550) * 6;
+    h = Math.max(22, Math.min(38, h));
+  } else if (biome === 'swamp') {
+    h = 21 + noise(wx/20+seed, wz/20+seed, 600) * 4;
+    h = Math.max(18, Math.min(28, h));
+  } else if (biome === 'savanna') {
+    h = 29 + noise(wx/25+seed, wz/25+seed, 650) * 7;
+    h = Math.max(26, Math.min(42, h));
+  } else if (biome === 'coral_reef') {
+    h = 18 + noise(wx/18+seed, wz/18+seed, 700) * 5;
+    h = Math.max(15, Math.min(24, h));
+  } else if (biome === 'mushroom') {
+    h = 23 + noise(wx/22+seed, wz/22+seed, 750) * 6;
+    h = Math.max(20, Math.min(32, h));
+  } else if (biome === 'cherry_grove') {
+    h = 26 + noise(wx/28+seed, wz/28+seed, 800) * 7;
+    h = Math.max(22, Math.min(38, h));
+  } else if (biome === 'bamboo_forest') {
+    h = 27 + noise(wx/24+seed, wz/24+seed, 850) * 6;
+    h = Math.max(24, Math.min(40, h));
+  } else if (biome === 'volcanic') {
+    h = 45 + Math.abs(noise(wx/12+seed, wz/12+seed, 900)) * 25;
+    h = Math.max(55, Math.min(WORLD_HEIGHT - 8, h));
+  } else if (biome === 'soul_sand_valley') {
+    h = 32 + noise(wx/18+seed, wz/18+seed, 950) * 10;
+    h = Math.max(30, Math.min(48, h));
+  } else if (biome === 'end_highlands') {
+    h = 38 + noise(wx/16+seed, wz/16+seed, 1000) * 15;
+    h = Math.max(35, Math.min(60, h));
+  } else if (biome === 'nether_wastes') {
+    h = 35 + noise(wx/20+seed, wz/20+seed, 1050) * 12;
+    h = Math.max(32, Math.min(55, h));
+  } else if (biome === 'oasis') {
+    h = 26 + noise(wx/22+seed, wz/22+seed, 1100) * 4;
+    h = Math.max(24, Math.min(34, h));
+  } else if (biome === 'ice_spikes') {
+    h = 28 + noise(wx/20+seed, wz/20+seed, 1150) * 10;
+    h = Math.max(25, Math.min(45, h));
+  } else if (biome === 'taiga') {
+    h = 28 + noise(wx/25+seed, wz/25+seed, 1200) * 7;
+    h = Math.max(24, Math.min(42, h));
+  } else if (biome === 'mesa') {
+    h = 35 + noise(wx/18+seed, wz/18+seed, 1250) * 12;
+    h = Math.max(30, Math.min(58, h));
+  } else if (biome === 'jungle') {
+    h = 24 + noise(wx/20+seed, wz/20+seed, 1350) * 10;
+    h = Math.max(20, Math.min(48, h));
+  } else if (biome === 'dark_forest') {
+    h = 26 + noise(wx/22+seed, wz/22+seed, 1400) * 8;
+    h = Math.max(22, Math.min(44, h));
+  } else {
+    h += noise(wx/25+seed, wz/25+seed, 300) * 8;
+    h = Math.max(20, Math.min(50, h));
+  }
   return Math.max(1, Math.min(WORLD_HEIGHT - 1, Math.floor(h)));
 }
 
@@ -176,7 +221,7 @@ function getBlockType(x, y, z) {
   return STONE;
 }
 
-// ==================== ГЕНЕРАЦИЯ ДЕРЕВЬЕВ ====================
+// ==================== ГЕНЕРАЦИЯ ДЕРЕВЬЕВ (редко, 1-2%) ====================
 function generateOakTree(editsMap, cx, cz, groundY) {
   const h = 5 + Math.floor(Math.random() * 2);
   for (let y = 0; y < h; y++) editsMap.set(`${cx},${groundY + y},${cz}`, WOOD);
@@ -185,7 +230,9 @@ function generateOakTree(editsMap, cx, cz, groundY) {
     for (let dx = -leafRad; dx <= leafRad; dx++) {
       for (let dz = -leafRad; dz <= leafRad; dz++) {
         const dist = Math.abs(dx) + Math.abs(dz) + Math.abs(dy);
-        if (dist <= leafRad + 0.5 && (dy + h) > 0) editsMap.set(`${cx + dx},${groundY + h - 1 + dy},${cz + dz}`, LEAVES);
+        if (dist <= leafRad + 0.5 && (dy + h) > 0) {
+          editsMap.set(`${cx + dx},${groundY + h - 1 + dy},${cz + dz}`, LEAVES);
+        }
       }
     }
   }
@@ -195,88 +242,458 @@ function generatePineTree(editsMap, cx, cz, groundY) {
   const h = 7 + Math.floor(Math.random() * 4);
   for (let y = 0; y < h; y++) editsMap.set(`${cx},${groundY + y},${cz}`, WOOD);
   for (let i = 0; i < 4; i++) {
-    const yOff = h - 2 - i * 2; const rad = 2 - i; if (rad < 1) continue;
-    for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) if (Math.abs(dx) + Math.abs(dz) <= rad) editsMap.set(`${cx + dx},${groundY + yOff + i},${cz + dz}`, LEAVES);
+    const yOff = h - 2 - i * 2;
+    const rad = 2 - i;
+    if (rad < 1) continue;
+    for (let dx = -rad; dx <= rad; dx++) {
+      for (let dz = -rad; dz <= rad; dz++) {
+        if (Math.abs(dx) + Math.abs(dz) <= rad) {
+          editsMap.set(`${cx + dx},${groundY + yOff + i},${cz + dz}`, LEAVES);
+        }
+      }
+    }
   }
 }
 
 function generatePalmTree(editsMap, cx, cz, groundY) {
   const h = 4 + Math.floor(Math.random() * 3);
   for (let y = 0; y < h; y++) editsMap.set(`${cx},${groundY + y},${cz}`, WOOD);
-  for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) if (Math.abs(dx) + Math.abs(dz) <= 2) editsMap.set(`${cx + dx},${groundY + h - 1},${cz + dz}`, LEAVES);
-  editsMap.set(`${cx},${groundY + h},${cz}`, LEAVES); editsMap.set(`${cx + 1},${groundY + h},${cz}`, LEAVES); editsMap.set(`${cx - 1},${groundY + h},${cz}`, LEAVES);
+  for (let dx = -2; dx <= 2; dx++) {
+    for (let dz = -2; dz <= 2; dz++) {
+      if (Math.abs(dx) + Math.abs(dz) <= 2) {
+        editsMap.set(`${cx + dx},${groundY + h - 1},${cz + dz}`, LEAVES);
+      }
+    }
+  }
+  editsMap.set(`${cx},${groundY + h},${cz}`, LEAVES);
+  editsMap.set(`${cx + 1},${groundY + h},${cz}`, LEAVES);
+  editsMap.set(`${cx - 1},${groundY + h},${cz}`, LEAVES);
 }
 
 function generateCherryTree(editsMap, cx, cz, groundY) {
   const h = 4 + Math.floor(Math.random() * 3);
   for (let y = 0; y < h; y++) editsMap.set(`${cx},${groundY + y},${cz}`, CHERRY_LOG);
-  for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) if (Math.abs(dx) + Math.abs(dz) <= 2) editsMap.set(`${cx + dx},${groundY + h - 1},${cz + dz}`, CHERRY_LEAVES);
+  for (let dx = -2; dx <= 2; dx++) {
+    for (let dz = -2; dz <= 2; dz++) {
+      if (Math.abs(dx) + Math.abs(dz) <= 2) {
+        editsMap.set(`${cx + dx},${groundY + h - 1},${cz + dz}`, CHERRY_LEAVES);
+      }
+    }
+  }
 }
 
 function generateSwampTree(editsMap, cx, cz, groundY) {
   const h = 5 + Math.floor(Math.random() * 2);
   for (let y = 0; y < h; y++) editsMap.set(`${cx},${groundY + y},${cz}`, WOOD);
-  for (let dy = -1; dy <= 1; dy++) for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) if (Math.abs(dx) + Math.abs(dz) <= 2) editsMap.set(`${cx + dx},${groundY + h - 1 + dy},${cz + dz}`, LEAVES);
-  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) for (let i = 1; i <= 2; i++) editsMap.set(`${cx + dx},${groundY + h - 1 - i},${cz + dz}`, LEAVES);
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -2; dx <= 2; dx++) {
+      for (let dz = -2; dz <= 2; dz++) {
+        if (Math.abs(dx) + Math.abs(dz) <= 2) {
+          editsMap.set(`${cx + dx},${groundY + h - 1 + dy},${cz + dz}`, LEAVES);
+        }
+      }
+    }
+  }
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let i = 1; i <= 2; i++) {
+        editsMap.set(`${cx + dx},${groundY + h - 1 - i},${cz + dz}`, LEAVES);
+      }
+    }
+  }
 }
 
 function generateGiantTree(editsMap, cx, cz, groundY) {
   const h = 8 + Math.floor(Math.random() * 5);
-  for (let y = 0; y < h; y++) for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) { if (dx === 0 && dz === 0) editsMap.set(`${cx},${groundY + y},${cz}`, WOOD); else if (y < h - 2) editsMap.set(`${cx + dx},${groundY + y},${cz + dz}`, WOOD); }
+  for (let y = 0; y < h; y++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        if (dx === 0 && dz === 0) editsMap.set(`${cx},${groundY + y},${cz}`, WOOD);
+        else if (y < h - 2) editsMap.set(`${cx + dx},${groundY + y},${cz + dz}`, WOOD);
+      }
+    }
+  }
   const rad = 4;
-  for (let dy = -3; dy <= 3; dy++) for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) if (Math.sqrt(dx*dx + dz*dz + dy*dy) <= rad) editsMap.set(`${cx + dx},${groundY + h - 2 + dy},${cz + dz}`, LEAVES);
+  for (let dy = -3; dy <= 3; dy++) {
+    for (let dx = -rad; dx <= rad; dx++) {
+      for (let dz = -rad; dz <= rad; dz++) {
+        const dist = Math.sqrt(dx*dx + dz*dz + dy*dy);
+        if (dist <= rad) {
+          editsMap.set(`${cx + dx},${groundY + h - 2 + dy},${cz + dz}`, LEAVES);
+        }
+      }
+    }
+  }
 }
 
 function generateDeadTree(editsMap, cx, cz, groundY) {
   const h = 3 + Math.floor(Math.random() * 3);
   for (let y = 0; y < h; y++) editsMap.set(`${cx},${groundY + y},${cz}`, WOOD);
-  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if (Math.random() < 0.3) editsMap.set(`${cx + dx},${groundY + h - 1},${cz + dz}`, WOOD);
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dz = -1; dz <= 1; dz++) {
+      if (Math.random() < 0.3) {
+        editsMap.set(`${cx + dx},${groundY + h - 1},${cz + dz}`, WOOD);
+      }
+    }
+  }
 }
 
 function generateJungleTree(editsMap, cx, cz, groundY) {
   const h = 6 + Math.floor(Math.random() * 5);
   for (let y = 0; y < h; y++) editsMap.set(`${cx},${groundY + y},${cz}`, WOOD);
   const rad = 3;
-  for (let dy = -2; dy <= 2; dy++) for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) if (Math.sqrt(dx*dx + dz*dz + dy*dy) <= rad) editsMap.set(`${cx + dx},${groundY + h - 2 + dy},${cz + dz}`, LEAVES);
-  for (let i = 1; i <= 3; i++) { editsMap.set(`${cx + 1},${groundY + h - i},${cz}`, LEAVES); editsMap.set(`${cx - 1},${groundY + h - i},${cz}`, LEAVES); }
+  for (let dy = -2; dy <= 2; dy++) {
+    for (let dx = -rad; dx <= rad; dx++) {
+      for (let dz = -rad; dz <= rad; dz++) {
+        const dist = Math.sqrt(dx*dx + dz*dz + dy*dy);
+        if (dist <= rad) {
+          editsMap.set(`${cx + dx},${groundY + h - 2 + dy},${cz + dz}`, LEAVES);
+        }
+      }
+    }
+  }
+  for (let i = 1; i <= 3; i++) {
+    editsMap.set(`${cx + 1},${groundY + h - i},${cz}`, LEAVES);
+    editsMap.set(`${cx - 1},${groundY + h - i},${cz}`, LEAVES);
+  }
 }
 
 function generateMegaTaigaTree(editsMap, cx, cz, groundY) {
-  const h = 12 + Math.floor(Math.random() * 5); const trunkW = 2;
-  for (let y = 0; y < h; y++) for (let dx = -trunkW; dx <= trunkW; dx++) for (let dz = -trunkW; dz <= trunkW; dz++) if (Math.abs(dx) + Math.abs(dz) <= trunkW) editsMap.set(`${cx + dx},${groundY + y},${cz + dz}`, WOOD);
-  for (let i = 0; i < 5; i++) { const yOff = h - 3 - i * 2; const rad = 3 - i; for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) if (Math.abs(dx) + Math.abs(dz) <= rad) editsMap.set(`${cx + dx},${groundY + yOff + i},${cz + dz}`, LEAVES); }
+  const h = 12 + Math.floor(Math.random() * 5);
+  const trunkW = 2;
+  for (let y = 0; y < h; y++) {
+    for (let dx = -trunkW; dx <= trunkW; dx++) {
+      for (let dz = -trunkW; dz <= trunkW; dz++) {
+        if (Math.abs(dx) + Math.abs(dz) <= trunkW) {
+          editsMap.set(`${cx + dx},${groundY + y},${cz + dz}`, WOOD);
+        }
+      }
+    }
+  }
+  for (let i = 0; i < 5; i++) {
+    const yOff = h - 3 - i * 2;
+    const rad = 3 - i;
+    for (let dx = -rad; dx <= rad; dx++) {
+      for (let dz = -rad; dz <= rad; dz++) {
+        if (Math.abs(dx) + Math.abs(dz) <= rad) {
+          editsMap.set(`${cx + dx},${groundY + yOff + i},${cz + dz}`, LEAVES);
+        }
+      }
+    }
+  }
 }
 
-function generateBamboo(editsMap, cx, cz, groundY) {
-  const h = 3 + Math.floor(Math.random() * 4);
-  for (let y = 0; y < h; y++) editsMap.set(`${cx},${groundY + y},${cz}`, BAMBOO);
-}
-
-// ==================== ГЕНЕРАЦИЯ СТРУКТУР ====================
+// ==================== СТРУКТУРЫ (очень редкие, 0.5%) ====================
 function generatePortal(editsMap, cx, cz, groundY) {
-  const size = 7; const startX = cx - Math.floor(size/2), startZ = cz - Math.floor(size/2);
-  for (let x = 0; x < size; x++) for (let z = 0; z < size; z++) if (x === 0 || x === size-1 || z === 0 || z === size-1) for (let y = 0; y < size; y++) { if (y === size-1) continue; editsMap.set(`${startX + x},${groundY + y},${startZ + z}`, OBSIDIAN); }
-  for (let x = 1; x < size-1; x++) for (let z = 1; z < size-1; z++) for (let y = 1; y < size-1; y++) editsMap.set(`${startX + x},${groundY + y},${startZ + z}`, AIR);
+  const size = 7;
+  const startX = cx - Math.floor(size/2), startZ = cz - Math.floor(size/2);
+  for (let x = 0; x < size; x++) {
+    for (let z = 0; z < size; z++) {
+      if (x === 0 || x === size-1 || z === 0 || z === size-1) {
+        for (let y = 0; y < size; y++) {
+          if (y === size-1) continue;
+          editsMap.set(`${startX + x},${groundY + y},${startZ + z}`, OBSIDIAN);
+        }
+      }
+    }
+  }
+  for (let x = 1; x < size-1; x++) {
+    for (let z = 1; z < size-1; z++) {
+      for (let y = 1; y < size-1; y++) {
+        editsMap.set(`${startX + x},${groundY + y},${startZ + z}`, AIR);
+      }
+    }
+  }
 }
-function generateStoneCircle(editsMap, cx, cz, groundY) { for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 8) { const dx = Math.round(Math.cos(angle) * 4); const dz = Math.round(Math.sin(angle) * 4); editsMap.set(`${cx + dx},${groundY},${cz + dz}`, STONE); editsMap.set(`${cx + dx},${groundY + 1},${cz + dz}`, MOSSY_STONE); } }
-function generateDruidAltar(editsMap, cx, cz, groundY) { for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) editsMap.set(`${cx + dx},${groundY},${cz + dz}`, STONE); editsMap.set(`${cx},${groundY + 1},${cz}`, GLOWSTONE); }
-function generateSmallPyramid(editsMap, cx, cz, groundY) { for (let y = 0; y < 3; y++) { const s = 3 - y; for (let dx = -s; dx <= s; dx++) for (let dz = -s; dz <= s; dz++) if (Math.abs(dx) === s || Math.abs(dz) === s) editsMap.set(`${cx + dx},${groundY + y},${cz + dz}`, SANDSTONE); } }
-function generateRuins(editsMap, cx, cz, groundY) { for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) { if (Math.random() < 0.6) { editsMap.set(`${cx + dx},${groundY},${cz + dz}`, MOSSY_STONE); if (Math.random() < 0.3) editsMap.set(`${cx + dx},${groundY + 1},${cz + dz}`, MOSSY_STONE); } } }
-function generateDolmen(editsMap, cx, cz, groundY) { for (let i = -1; i <= 1; i++) { editsMap.set(`${cx + i},${groundY},${cz}`, STONE); editsMap.set(`${cx + i},${groundY + 1},${cz}`, STONE); editsMap.set(`${cx + i},${groundY + 2},${cz}`, STONE); } for (let i = -1; i <= 1; i++) { editsMap.set(`${cx + i},${groundY + 3},${cz - 1}`, STONE); editsMap.set(`${cx + i},${groundY + 3},${cz + 1}`, STONE); } editsMap.set(`${cx},${groundY + 3},${cz}`, STONE); }
-function generateWell(editsMap, cx, cz, groundY) { for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) editsMap.set(`${cx + dx},${groundY},${cz + dz}`, STONE); }
-function generateTotemPole(editsMap, cx, cz, groundY) { for (let y = 0; y < 4; y++) editsMap.set(`${cx},${groundY + y},${cz}`, WOOD); editsMap.set(`${cx},${groundY + 4},${cz}`, PLANKS); editsMap.set(`${cx},${groundY + 5},${cz}`, PLANKS); editsMap.set(`${cx + 1},${groundY + 4},${cz}`, PLANKS); editsMap.set(`${cx - 1},${groundY + 4},${cz}`, PLANKS); }
-function generateHangingGarden(editsMap, cx, cz, groundY) { for (let y = 0; y < 3; y++) for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) if (Math.abs(dx) + Math.abs(dz) <= 2) editsMap.set(`${cx + dx},${groundY + y},${cz + dz}`, DIRT); for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) if (Math.abs(dx) + Math.abs(dz) <= 2) { editsMap.set(`${cx + dx},${groundY + 3},${cz + dz}`, GRASS); if (Math.random() < 0.5) editsMap.set(`${cx + dx},${groundY + 4},${cz + dz}`, LEAVES); } }
-function generateIceSpike(editsMap, cx, cz, groundY) { const h = 5 + Math.floor(Math.random() * 6); for (let y = 0; y < h; y++) { const rad = Math.max(0, Math.floor((h - y) / 2)); for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) if (Math.abs(dx) + Math.abs(dz) <= rad) editsMap.set(`${cx + dx},${groundY + y},${cz + dz}`, PACKED_ICE); } }
-function generateHouse(editsMap, cx, cz, groundY) { const width = 8, height = 6, depth = 8; const startX = cx - width/2, startZ = cz - depth/2; for (let x = 0; x < width; x++) for (let z = 0; z < depth; z++) for (let y = 0; y < height; y++) { const wx = startX + x, wz = startZ + z, wy = groundY + y; if (wy >= WORLD_HEIGHT) continue; if (x === 0 || x === width-1 || z === 0 || z === depth-1 || y === 0 || y === height-1) { if (z === 0 && x >= 3 && x <= 4 && y >= 1 && y <= 2) continue; editsMap.set(`${wx},${wy},${wz}`, (y === 0) ? PLANKS : WOOD); } } }
-function generatePyramid(editsMap, cx, cz, groundY) { const size = 9; const startX = cx - Math.floor(size/2), startZ = cz - Math.floor(size/2); for (let y = 0; y < size; y++) { const s = size - y; for (let x = 0; x < s; x++) for (let z = 0; z < s; z++) { const wx = startX + x + y/2, wz = startZ + z + y/2, wy = groundY + y; if (wy >= WORLD_HEIGHT) continue; if (x === 0 || x === s-1 || z === 0 || z === s-1 || y === size-1) editsMap.set(`${wx},${wy},${wz}`, SANDSTONE); } } }
-function generateIgloo(editsMap, cx, cz, groundY) { const radius = 4; for (let dx = -radius; dx <= radius; dx++) for (let dz = -radius; dz <= radius; dz++) { const dist = Math.sqrt(dx*dx + dz*dz); if (dist > radius) continue; const height = Math.floor(radius - dist); for (let y = 0; y <= height; y++) { const wy = groundY + y; if (wy >= WORLD_HEIGHT) continue; editsMap.set(`${cx + dx},${wy},${cz + dz}`, y === height ? SNOW_BLOCK : ICE); } } editsMap.set(`${cx},${groundY+1},${cz - radius}`, AIR); }
-function generateJungleTemple(editsMap, cx, cz, groundY) { const width = 8, height = 6, depth = 8; const startX = cx - width/2, startZ = cz - depth/2; for (let x = 0; x < width; x++) for (let z = 0; z < depth; z++) for (let y = 0; y < height; y++) { const wx = startX + x, wz = startZ + z, wy = groundY + y; if (wy >= WORLD_HEIGHT) continue; if (x === 0 || x === width-1 || z === 0 || z === depth-1 || y === 0 || y === height-1) { if (z === 0 && x >= 3 && x <= 4 && y >= 1 && y <= 2) continue; editsMap.set(`${wx},${wy},${wz}`, MOSSY_STONE); } } }
-function generateWitchHut(editsMap, cx, cz, groundY) { const width = 7, height = 5, depth = 7; const startX = cx - width/2, startZ = cz - depth/2; for (let x = 0; x < width; x++) for (let z = 0; z < depth; z++) { const wy = groundY; if (wy >= WORLD_HEIGHT) continue; if (Math.abs(x - width/2) < 2 && Math.abs(z - depth/2) < 2) editsMap.set(`${startX+x},${wy},${startZ+z}`, PLANKS); else editsMap.set(`${startX+x},${wy-1},${startZ+z}`, WOOD); if (x === 0 || x === width-1 || z === 0 || z === depth-1) for (let y = 1; y < height; y++) { const wy2 = groundY + y; if (wy2 >= WORLD_HEIGHT) continue; editsMap.set(`${startX+x},${wy2},${startZ+z}`, WOOD); } } }
-function generateShipwreck(editsMap, cx, cz, groundY) { const length = 10, width = 4, height = 3; const startX = cx - length/2, startZ = cz - width/2; for (let l = 0; l < length; l++) for (let w = 0; w < width; w++) for (let h = 0; h < height; h++) { const wx = startX + l, wz = startZ + w, wy = groundY + h; if (wy >= WORLD_HEIGHT) continue; if (h === 0) editsMap.set(`${wx},${wy},${wz}`, PLANKS); else if (l === 0 || l === length-1 || w === 0 || w === width-1) editsMap.set(`${wx},${wy},${wz}`, WOOD); } }
-function generateGiantMushroom(editsMap, cx, cz, groundY) { const height = 6, capRadius = 4; for (let y = 0; y < height; y++) editsMap.set(`${cx},${groundY + y},${cz}`, MUSHROOM_STEM); for (let dx = -capRadius; dx <= capRadius; dx++) for (let dz = -capRadius; dz <= capRadius; dz++) if (Math.sqrt(dx*dx + dz*dz) <= capRadius) editsMap.set(`${cx+dx},${groundY+height-1},${cz+dz}`, RED_MUSHROOM); }
-function generateObsidianTower(editsMap, cx, cz, groundY) { const height = 12, width = 3; for (let y = 0; y < height; y++) for (let x = -width; x <= width; x++) for (let z = -width; z <= width; z++) if (Math.abs(x) === width || Math.abs(z) === width || y === 0 || y === height-1) editsMap.set(`${cx+x},${groundY+y},${cz+z}`, OBSIDIAN); }
-function generateEndCity(editsMap, cx, cz, groundY) { const height = 8; for (let y = 0; y < height; y++) for (let x = -2; x <= 2; x++) for (let z = -2; z <= 2; z++) if (!(Math.abs(x) === 2 && Math.abs(z) === 2)) editsMap.set(`${cx+x},${groundY+y},${cz+z}`, (y % 2 === 0) ? PURPUR : END_STONE); }
-function generateDungeon(editsMap, cx, cz, groundY) { for (let y = 0; y < 3; y++) for (let x = -1; x <= 1; x++) editsMap.set(`${cx+x},${groundY + y + 1},${cz}`, (y === 1 && x === 0) ? AIR : STONE); const roomY = groundY - 3; for (let x = -3; x <= 3; x++) for (let z = -3; z <= 3; z++) for (let y = -2; y <= 2; y++) { const wy = roomY + y; if (wy < 0) continue; if (Math.abs(x) === 3 || Math.abs(z) === 3 || y === -2 || y === 2) editsMap.set(`${cx+x},${wy},${cz+z}`, MOSSY_STONE); else editsMap.set(`${cx+x},${wy},${cz+z}`, AIR); } }
+
+function generateStoneCircle(editsMap, cx, cz, groundY) {
+  const radius = 4;
+  for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 8) {
+    const dx = Math.round(Math.cos(angle) * radius);
+    const dz = Math.round(Math.sin(angle) * radius);
+    editsMap.set(`${cx + dx},${groundY},${cz + dz}`, STONE);
+    editsMap.set(`${cx + dx},${groundY + 1},${cz + dz}`, MOSSY_STONE);
+  }
+}
+
+function generateDruidAltar(editsMap, cx, cz, groundY) {
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dz = -1; dz <= 1; dz++) {
+      editsMap.set(`${cx + dx},${groundY},${cz + dz}`, STONE);
+    }
+  }
+  editsMap.set(`${cx},${groundY + 1},${cz}`, GLOWSTONE);
+  editsMap.set(`${cx},${groundY + 2},${cz}`, AIR);
+}
+
+function generateSmallPyramid(editsMap, cx, cz, groundY) {
+  const stone = SANDSTONE;
+  for (let y = 0; y < 3; y++) {
+    const s = 3 - y;
+    for (let dx = -s; dx <= s; dx++) {
+      for (let dz = -s; dz <= s; dz++) {
+        if (Math.abs(dx) === s || Math.abs(dz) === s) {
+          editsMap.set(`${cx + dx},${groundY + y},${cz + dz}`, stone);
+        }
+      }
+    }
+  }
+}
+
+function generateRuins(editsMap, cx, cz, groundY) {
+  for (let dx = -2; dx <= 2; dx++) {
+    for (let dz = -2; dz <= 2; dz++) {
+      if (Math.random() < 0.6) {
+        editsMap.set(`${cx + dx},${groundY},${cz + dz}`, MOSSY_STONE);
+        if (Math.random() < 0.3) editsMap.set(`${cx + dx},${groundY + 1},${cz + dz}`, MOSSY_STONE);
+      }
+    }
+  }
+}
+
+function generateDolmen(editsMap, cx, cz, groundY) {
+  for (let i = -1; i <= 1; i++) {
+    editsMap.set(`${cx + i},${groundY},${cz}`, STONE);
+    editsMap.set(`${cx + i},${groundY + 1},${cz}`, STONE);
+    editsMap.set(`${cx + i},${groundY + 2},${cz}`, STONE);
+  }
+  for (let i = -1; i <= 1; i++) {
+    editsMap.set(`${cx + i},${groundY + 3},${cz - 1}`, STONE);
+    editsMap.set(`${cx + i},${groundY + 3},${cz + 1}`, STONE);
+  }
+  editsMap.set(`${cx},${groundY + 3},${cz}`, STONE);
+}
+
+function generateWell(editsMap, cx, cz, groundY) {
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dz = -1; dz <= 1; dz++) {
+      editsMap.set(`${cx + dx},${groundY},${cz + dz}`, STONE);
+    }
+  }
+  editsMap.set(`${cx},${groundY + 1},${cz}`, AIR);
+  editsMap.set(`${cx},${groundY + 2},${cz}`, AIR);
+}
+
+function generateTotemPole(editsMap, cx, cz, groundY) {
+  for (let y = 0; y < 4; y++) editsMap.set(`${cx},${groundY + y},${cz}`, WOOD);
+  editsMap.set(`${cx},${groundY + 4},${cz}`, PLANKS);
+  editsMap.set(`${cx},${groundY + 5},${cz}`, PLANKS);
+  editsMap.set(`${cx + 1},${groundY + 4},${cz}`, PLANKS);
+  editsMap.set(`${cx - 1},${groundY + 4},${cz}`, PLANKS);
+}
+
+function generateHangingGarden(editsMap, cx, cz, groundY) {
+  for (let y = 0; y < 3; y++) {
+    for (let dx = -2; dx <= 2; dx++) {
+      for (let dz = -2; dz <= 2; dz++) {
+        if (Math.abs(dx) + Math.abs(dz) <= 2) {
+          editsMap.set(`${cx + dx},${groundY + y},${cz + dz}`, DIRT);
+        }
+      }
+    }
+  }
+  for (let dx = -2; dx <= 2; dx++) {
+    for (let dz = -2; dz <= 2; dz++) {
+      if (Math.abs(dx) + Math.abs(dz) <= 2) {
+        editsMap.set(`${cx + dx},${groundY + 3},${cz + dz}`, GRASS);
+        if (Math.random() < 0.5) editsMap.set(`${cx + dx},${groundY + 4},${cz + dz}`, LEAVES);
+      }
+    }
+  }
+}
+
+function generateIceSpike(editsMap, cx, cz, groundY) {
+  const h = 5 + Math.floor(Math.random() * 6);
+  for (let y = 0; y < h; y++) {
+    const rad = Math.max(0, Math.floor((h - y) / 2));
+    for (let dx = -rad; dx <= rad; dx++) {
+      for (let dz = -rad; dz <= rad; dz++) {
+        if (Math.abs(dx) + Math.abs(dz) <= rad) {
+          editsMap.set(`${cx + dx},${groundY + y},${cz + dz}`, PACKED_ICE);
+        }
+      }
+    }
+  }
+}
+
+function generateHouse(editsMap, cx, cz, groundY) {
+  const wood = WOOD, planks = PLANKS;
+  const width = 8, height = 6, depth = 8;
+  const startX = cx - width/2, startZ = cz - depth/2;
+  for (let x = 0; x < width; x++) {
+    for (let z = 0; z < depth; z++) {
+      for (let y = 0; y < height; y++) {
+        const wx = startX + x, wz = startZ + z, wy = groundY + y;
+        if (wy >= WORLD_HEIGHT) continue;
+        if (x === 0 || x === width-1 || z === 0 || z === depth-1 || y === 0 || y === height-1) {
+          if (z === 0 && x >= 3 && x <= 4 && y >= 1 && y <= 2) continue;
+          editsMap.set(`${wx},${wy},${wz}`, (y === 0) ? planks : wood);
+        }
+      }
+    }
+  }
+}
+
+function generatePyramid(editsMap, cx, cz, groundY) {
+  const stone = SANDSTONE;
+  const size = 9;
+  const startX = cx - Math.floor(size/2), startZ = cz - Math.floor(size/2);
+  for (let y = 0; y < size; y++) {
+    const s = size - y;
+    for (let x = 0; x < s; x++) {
+      for (let z = 0; z < s; z++) {
+        const wx = startX + x + y/2, wz = startZ + z + y/2, wy = groundY + y;
+        if (wy >= WORLD_HEIGHT) continue;
+        if (x === 0 || x === s-1 || z === 0 || z === s-1 || y === size-1) {
+          editsMap.set(`${wx},${wy},${wz}`, stone);
+        }
+      }
+    }
+  }
+}
+
+function generateIgloo(editsMap, cx, cz, groundY) {
+  const ice = ICE, snow = SNOW_BLOCK;
+  const radius = 4;
+  for (let dx = -radius; dx <= radius; dx++) {
+    for (let dz = -radius; dz <= radius; dz++) {
+      const dist = Math.sqrt(dx*dx + dz*dz);
+      if (dist > radius) continue;
+      const wx = cx + dx, wz = cz + dz;
+      const height = Math.floor(radius - dist);
+      for (let y = 0; y <= height; y++) {
+        const wy = groundY + y;
+        if (wy >= WORLD_HEIGHT) continue;
+        editsMap.set(`${wx},${wy},${wz}`, y === height ? snow : ice);
+      }
+    }
+  }
+  editsMap.set(`${cx},${groundY+1},${cz - radius}`, AIR);
+}
+
+function generateJungleTemple(editsMap, cx, cz, groundY) {
+  const stone = MOSSY_STONE;
+  const width = 8, height = 6, depth = 8;
+  const startX = cx - width/2, startZ = cz - depth/2;
+  for (let x = 0; x < width; x++) {
+    for (let z = 0; z < depth; z++) {
+      for (let y = 0; y < height; y++) {
+        const wx = startX + x, wz = startZ + z, wy = groundY + y;
+        if (wy >= WORLD_HEIGHT) continue;
+        if (x === 0 || x === width-1 || z === 0 || z === depth-1 || y === 0 || y === height-1) {
+          if (z === 0 && x >= 3 && x <= 4 && y >= 1 && y <= 2) continue;
+          editsMap.set(`${wx},${wy},${wz}`, stone);
+        }
+      }
+    }
+  }
+}
+
+function generateWitchHut(editsMap, cx, cz, groundY) {
+  const wood = WOOD, planks = PLANKS;
+  const width = 7, height = 5, depth = 7;
+  const startX = cx - width/2, startZ = cz - depth/2;
+  for (let x = 0; x < width; x++) {
+    for (let z = 0; z < depth; z++) {
+      const wy = groundY;
+      if (wy >= WORLD_HEIGHT) continue;
+      if (Math.abs(x - width/2) < 2 && Math.abs(z - depth/2) < 2) {
+        editsMap.set(`${startX+x},${wy},${startZ+z}`, planks);
+      } else {
+        editsMap.set(`${startX+x},${wy-1},${startZ+z}`, WOOD);
+      }
+      if (x === 0 || x === width-1 || z === 0 || z === depth-1) {
+        for (let y = 1; y < height; y++) {
+          const wy2 = groundY + y;
+          if (wy2 >= WORLD_HEIGHT) continue;
+          editsMap.set(`${startX+x},${wy2},${startZ+z}`, wood);
+        }
+      }
+    }
+  }
+}
+
+function generateShipwreck(editsMap, cx, cz, groundY) {
+  const wood = WOOD, planks = PLANKS;
+  const length = 10, width = 4, height = 3;
+  const startX = cx - length/2, startZ = cz - width/2;
+  for (let l = 0; l < length; l++) {
+    for (let w = 0; w < width; w++) {
+      for (let h = 0; h < height; h++) {
+        const wx = startX + l, wz = startZ + w, wy = groundY + h;
+        if (wy >= WORLD_HEIGHT) continue;
+        if (h === 0) editsMap.set(`${wx},${wy},${wz}`, planks);
+        else if (l === 0 || l === length-1 || w === 0 || w === width-1) {
+          editsMap.set(`${wx},${wy},${wz}`, wood);
+        }
+      }
+    }
+  }
+}
+
+function generateGiantMushroom(editsMap, cx, cz, groundY) {
+  const stem = MUSHROOM_STEM, cap = RED_MUSHROOM;
+  const height = 6, capRadius = 4;
+  for (let y = 0; y < height; y++) editsMap.set(`${cx},${groundY + y},${cz}`, stem);
+  for (let dx = -capRadius; dx <= capRadius; dx++) {
+    for (let dz = -capRadius; dz <= capRadius; dz++) {
+      const dist = Math.sqrt(dx*dx + dz*dz);
+      if (dist <= capRadius) {
+        editsMap.set(`${cx+dx},${groundY+height-1},${cz+dz}`, cap);
+      }
+    }
+  }
+}
+
+function generateObsidianTower(editsMap, cx, cz, groundY) {
+  const obsidian = OBSIDIAN;
+  const height = 12, width = 3;
+  for (let y = 0; y < height; y++) {
+    for (let x = -width; x <= width; x++) {
+      for (let z = -width; z <= width; z++) {
+        if (Math.abs(x) === width || Math.abs(z) === width || y === 0 || y === height-1) {
+          editsMap.set(`${cx+x},${groundY+y},${cz+z}`, obsidian);
+        }
+      }
+    }
+  }
+}
+
+function generateEndCity(editsMap, cx, cz, groundY) {
+  const endStone = END_STONE, purpur = PURPUR;
+  const height = 8;
+  for (let y = 0; y < height; y++) {
+    for (let x = -2; x <= 2; x++) {
+      for (let z = -2; z <= 2; z++) {
+        if (Math.abs(x) === 2 && Math.abs(z) === 2) continue;
+        editsMap.set(`${cx+x},${groundY+y},${cz+z}`, (y % 2 === 0) ? purpur : endStone);
+      }
+    }
+  }
+}
+
+function generateDungeon(editsMap, cx, cz, groundY) {
+  const stone = STONE, moss = MOSSY_STONE;
+  for (let y = 0; y < 3; y++) {
+    for (let x = -1; x <= 1; x++) {
+      editsMap.set(`${cx+x},${groundY + y + 1},${cz}`, (y === 1 && x === 0) ? AIR : stone);
+    }
+  }
+  const roomY = groundY - 3;
+  for (let x = -3; x <= 3; x++) {
+    for (let z = -3; z <= 3; z++) {
+      for (let y = -2; y <= 2; y++) {
+        const wy = roomY + y;
+        if (wy < 0) continue;
+        if (Math.abs(x) === 3 || Math.abs(z) === 3 || y === -2 || y === 2) {
+          editsMap.set(`${cx+x},${wy},${cz+z}`, moss);
+        } else {
+          editsMap.set(`${cx+x},${wy},${cz+z}`, AIR);
+        }
+      }
+    }
+  }
+}
 
 // ==================== ИНИЦИАЛИЗАЦИЯ МИРА ====================
 seed = Math.floor(Math.random() * 10000);
@@ -284,6 +701,7 @@ const edits = new Map();
 const players = new Map();
 let nextId = 1;
 
+// Предгенерация деревьев (шанс 2%) и структур (шанс 0.5%)
 for (let cx = -25; cx <= 25; cx++) {
   for (let cz = -25; cz <= 25; cz++) {
     const centerX = cx * 16 + 8, centerZ = cz * 16 + 8;
@@ -324,37 +742,105 @@ for (let cx = -25; cx <= 25; cx++) {
     }
     if (biome === 'desert' && Math.random() < 0.02) {
       const cactusHeight = 1 + Math.floor(Math.random() * 2);
-      for (let h = 0; h < cactusHeight; h++) edits.set(`${centerX},${groundY + h},${centerZ}`, CACTUS);
+      for (let h = 0; h < cactusHeight; h++) {
+        edits.set(`${centerX},${groundY + h},${centerZ}`, CACTUS);
+      }
     }
   }
 }
 
-// ==================== СУЩНОСТИ И МОБЫ ====================
+function generateBamboo(editsMap, cx, cz, groundY) {
+  const h = 3 + Math.floor(Math.random() * 4);
+  for (let y = 0; y < h; y++) {
+    editsMap.set(`${cx},${groundY + y},${cz}`, BAMBOO);
+  }
+}
+
+// ==================== СУЩНОСТИ (с гравитацией, прыжками и универсальным слиянием) ====================
 let nextEntityId = 1;
 const entities = new Map();
 
+// Конфигурация мобов по умолчанию
 const MOB_TYPES = {
-  zombie: { health: 30, maxHealth: 30, walkSpeed: 3.0, damage: 3.0, damageDistance: 2.0, attackCooldown: 1.0, width: 0.6, height: 1.8, color: 0x44aa44, gravity: 1, jumpPower: 12.0, slimeSize: 0 },
-  skeleton: { health: 20, maxHealth: 20, walkSpeed: 4.0, damage: 4.0, damageDistance: 5.0, attackCooldown: 1.5, width: 0.6, height: 1.8, color: 0xcccccc, gravity: 1, jumpPower: 12.0, slimeSize: 0 },
-  ghost: { health: 15, maxHealth: 15, walkSpeed: 3.0, damage: 2.0, damageDistance: 3.0, attackCooldown: 1.0, width: 0.6, height: 1.8, color: 0x88aaff, gravity: 0, jumpPower: 0, slimeSize: 0 },
-  slime: { health: 20, maxHealth: 20, walkSpeed: 1.5, damage: 2.0, damageDistance: 1.5, attackCooldown: 1.0, width: 0.6, height: 0.6, color: 0x88dd88, gravity: 1, jumpPower: 8.0, slimeSize: 1.0 },
+  zombie: {
+    health: 30,
+    maxHealth: 30,
+    walkSpeed: 3.0,
+    damage: 3.0,
+    damageDistance: 2.0,
+    attackCooldown: 1.0,
+    width: 0.6,
+    height: 1.8,
+    color: 0x44aa44,
+    gravity: 1,
+    jumpPower: 12.0,
+    slimeSize: 0,          // 0 – не сливается
+  },
+  skeleton: {
+    health: 20,
+    maxHealth: 20,
+    walkSpeed: 4.0,
+    damage: 4.0,
+    damageDistance: 5.0,
+    attackCooldown: 1.5,
+    width: 0.6,
+    height: 1.8,
+    color: 0xcccccc,
+    gravity: 1,
+    jumpPower: 12.0,
+    slimeSize: 0,
+  },
+  ghost: {
+    health: 15,
+    maxHealth: 15,
+    walkSpeed: 3.0,
+    damage: 2.0,
+    damageDistance: 3.0,
+    attackCooldown: 1.0,
+    width: 0.6,
+    height: 1.8,
+    color: 0x88aaff,
+    gravity: 0,
+    jumpPower: 0,
+    slimeSize: 0,
+  },
+  slime: {
+    health: 20,
+    maxHealth: 20,
+    walkSpeed: 1.5,
+    damage: 2.0,
+    damageDistance: 1.5,
+    attackCooldown: 1.0,
+    width: 0.6,
+    height: 0.6,
+    color: 0x88dd88,
+    gravity: 1,
+    jumpPower: 8.0,
+    slimeSize: 1.0,        // по умолчанию 1 – сливается
+  },
 };
 
 class Entity {
   constructor(type, x, y, z, data = {}) {
     this.id = nextEntityId++;
     this.type = type;
-    this.x = x; this.y = y; this.z = z;
-    this.vx = 0; this.vy = 0; this.vz = 0;
-    this.yaw = 0; this.pitch = 0;
+    this.x = x;
+    this.y = y;
+    this.z = z;
+    this.vx = 0;
+    this.vy = 0;
+    this.vz = 0;
+    this.yaw = 0;
+    this.pitch = 0;
     this.alive = true;
 
     if (type === 'mob') {
       let mobData = data;
-      if (typeof data === 'string') mobData = parseMobData(data);
+      if (typeof data === 'string') {
+        mobData = parseMobData(data);
+      }
       const mobType = mobData.mobType || 'zombie';
       const defaults = MOB_TYPES[mobType] || MOB_TYPES.zombie;
-      
       this.mobType = mobType;
       this.hp = mobData.health ?? defaults.health;
       this.maxHp = mobData.maxHealth ?? defaults.maxHealth;
@@ -362,14 +848,14 @@ class Entity {
       this.damage = mobData.damage ?? defaults.damage;
       this.damageDistance = mobData.damageDistance ?? defaults.damageDistance;
       this.attackCooldown = mobData.attackCooldown ?? defaults.attackCooldown;
-      
+      // Размеры умножаются на slimeSize (если slimeSize > 0, иначе оставляем как есть)
       const sizeFactor = mobData.slimeSize ?? defaults.slimeSize ?? 0;
       this.width = (mobData.width ?? defaults.width) * (sizeFactor > 0 ? sizeFactor : 1);
       this.height = (mobData.height ?? defaults.height) * (sizeFactor > 0 ? sizeFactor : 1);
       this.color = mobData.color ?? defaults.color;
       this.gravity = mobData.gravity ?? defaults.gravity ?? 1;
       this.jumpPower = mobData.jumpPower ?? defaults.jumpPower ?? 12.0;
-      this.slimeSize = sizeFactor;
+      this.slimeSize = sizeFactor;  // 0 или положительное число
       this.lastAttackTime = 0;
       this.onGround = false;
     } else {
@@ -379,22 +865,21 @@ class Entity {
   }
 }
 
-// ИСПРАВЛЕНИЕ: Карта конвертации snake_case в camelCase
-const MOB_KEY_MAP = {
-  'mob': 'mobType', 'damage_distance': 'damageDistance', 'walk_speed': 'walkSpeed',
-  'max_health': 'maxHealth', 'jump_power': 'jumpPower', 'slime_size': 'slimeSize',
-  'attack_cooldown': 'attackCooldown'
-};
-
+// Парсер строки вида "mob:zombie,health:30,max_health:30,walk_speed:3,damage:3,damage_distance:5,gravity:0,slimeSize:2"
 function parseMobData(str) {
   const result = {};
   const parts = str.split(',');
   for (const part of parts) {
     const [key, value] = part.split(':');
     if (!key || value === undefined) continue;
-    const trimmedKey = MOB_KEY_MAP[key.trim()] || key.trim();
-    let numVal = parseFloat(value.trim());
-    result[trimmedKey] = !isNaN(numVal) ? numVal : value.trim();
+    const trimmedKey = key.trim();
+    let trimmedVal = value.trim();
+    let numVal = parseFloat(trimmedVal);
+    if (!isNaN(numVal)) {
+      result[trimmedKey] = numVal;
+    } else {
+      result[trimmedKey] = trimmedVal;
+    }
   }
   return result;
 }
@@ -403,10 +888,22 @@ function spawnEntity(type, x, y, z, data = {}) {
   const entity = new Entity(type, x, y, z, data);
   entities.set(entity.id, entity);
   broadcast('entitySpawn', {
-    id: entity.id, type: entity.type, x: entity.x, y: entity.y, z: entity.z, yaw: entity.yaw, pitch: entity.pitch,
+    id: entity.id,
+    type: entity.type,
+    x: entity.x,
+    y: entity.y,
+    z: entity.z,
+    yaw: entity.yaw,
+    pitch: entity.pitch,
     data: entity.type === 'mob' ? {
-      mobType: entity.mobType, hp: entity.hp, maxHp: entity.maxHp, color: entity.color,
-      width: entity.width, height: entity.height, gravity: entity.gravity, slimeSize: entity.slimeSize,
+      mobType: entity.mobType,
+      hp: entity.hp,
+      maxHp: entity.maxHp,
+      color: entity.color,
+      width: entity.width,
+      height: entity.height,
+      gravity: entity.gravity,
+      slimeSize: entity.slimeSize,
     } : entity.data,
   });
   return entity.id;
@@ -422,7 +919,8 @@ function despawnEntity(id) {
 
 function damageEntity(entityId, dmg, src = {}) {
   const entity = entities.get(entityId);
-  if (!entity || !entity.alive || entity.type !== 'mob' || dmg <= 0) return;
+  if (!entity || !entity.alive || entity.type !== 'mob') return;
+  if (dmg <= 0) return;
   entity.hp -= dmg;
   if (entity.hp <= 0) {
     despawnEntity(entityId);
@@ -432,177 +930,320 @@ function damageEntity(entityId, dmg, src = {}) {
   }
 }
 
-// ИСПРАВЛЕНИЕ: Функция проверки линии прямой видимости
-function hasLineOfSight(x1, y1, z1, x2, y2, z2) {
-  const dx = x2 - x1, dy = y2 - y1, dz = z2 - z1;
-  const dist = Math.hypot(dx, dy, dz);
-  if (dist === 0) return true;
-  const steps = Math.ceil(dist * 2);
-  for (let i = 1; i < steps; i++) {
-    const t = i / steps;
-    if (getBlockType(Math.floor(x1 + dx * t), Math.floor(y1 + dy * t), Math.floor(z1 + dz * t)) !== 0) return false;
-  }
-  return true;
-}
-
+// ---- Движение наземного моба (с гравитацией, коллизией и прыжками) ----
 function moveMobGround(entity, dx, dz, dt) {
   const halfW = entity.width / 2;
   const height = entity.height;
   const gravityAccel = 20.0;
+
   function collidesAt(x, z, y) {
-    const minX = Math.floor(x - halfW), maxX = Math.floor(x + halfW);
-    const minZ = Math.floor(z - halfW), maxZ = Math.floor(z + halfW);
-    const startY = Math.floor(y), endY = Math.floor(y + height - 0.01);
-    for (let by = startY; by <= endY; by++)
-      for (let bx = minX; bx <= maxX; bx++)
-        for (let bz = minZ; bz <= maxZ; bz++)
+    const minX = Math.floor(x - halfW);
+    const maxX = Math.floor(x + halfW);
+    const minZ = Math.floor(z - halfW);
+    const maxZ = Math.floor(z + halfW);
+    const startY = Math.floor(y);
+    const endY = Math.floor(y + height - 0.01);
+    for (let by = startY; by <= endY; by++) {
+      for (let bx = minX; bx <= maxX; bx++) {
+        for (let bz = minZ; bz <= maxZ; bz++) {
           if (getBlockType(bx, by, bz) !== 0) return true;
+        }
+      }
+    }
     return false;
   }
+
+  // Горизонталь
   const newX = entity.x + dx * dt;
-  if (!collidesAt(newX, entity.z, entity.y)) { entity.x = newX; } else { entity.vx = 0; if (entity.onGround && entity.jumpPower > 0) { entity.vy = entity.jumpPower; entity.onGround = false; } }
+  if (!collidesAt(newX, entity.z, entity.y)) {
+    entity.x = newX;
+  } else {
+    entity.vx = 0;
+    if (entity.onGround && entity.jumpPower > 0) {
+      entity.vy = entity.jumpPower;
+      entity.onGround = false;
+    }
+  }
+
   const newZ = entity.z + dz * dt;
-  if (!collidesAt(entity.x, newZ, entity.y)) { entity.z = newZ; } else { entity.vz = 0; if (entity.onGround && entity.jumpPower > 0) { entity.vy = entity.jumpPower; entity.onGround = false; } }
+  if (!collidesAt(entity.x, newZ, entity.y)) {
+    entity.z = newZ;
+  } else {
+    entity.vz = 0;
+    if (entity.onGround && entity.jumpPower > 0) {
+      entity.vy = entity.jumpPower;
+      entity.onGround = false;
+    }
+  }
+
+  // Вертикаль
   entity.vy -= gravityAccel * dt;
   const newY = entity.y + entity.vy * dt;
-  if (!collidesAt(entity.x, entity.z, newY)) { entity.y = newY; entity.onGround = false; }
-  else { if (entity.vy < 0) { entity.y = Math.floor(entity.y) + 0.1; entity.vy = 0; entity.onGround = true; } else { entity.vy = 0; } }
-  if (entity.y < 0) { const groundY = getCachedHeight(Math.floor(entity.x), Math.floor(entity.z)); entity.y = groundY + 0.1; entity.vy = 0; entity.onGround = true; }
+  if (!collidesAt(entity.x, entity.z, newY)) {
+    entity.y = newY;
+    entity.onGround = false;
+  } else {
+    if (entity.vy < 0) {
+      entity.y = Math.floor(entity.y) + 0.1;
+      entity.vy = 0;
+      entity.onGround = true;
+    } else {
+      entity.vy = 0;
+    }
+  }
+
+  if (entity.y < 0) {
+    const groundY = getCachedHeight(Math.floor(entity.x), Math.floor(entity.z));
+    entity.y = groundY + 0.1;
+    entity.vy = 0;
+    entity.onGround = true;
+  }
 }
 
+// ---- Движение летающего моба ----
 function moveMobFlying(entity, targetX, targetY, targetZ, dt) {
-  const dx = targetX - entity.x, dy = targetY - entity.y, dz = targetZ - entity.z;
+  const dx = targetX - entity.x;
+  const dy = targetY - entity.y;
+  const dz = targetZ - entity.z;
   const dist = Math.hypot(dx, dy, dz);
   if (dist < 0.1) return;
   const speed = entity.walkSpeed;
-  entity.x += (dx / dist) * speed * dt;
-  entity.y += (dy / dist) * speed * dt;
-  entity.z += (dz / dist) * speed * dt;
+  const normDx = dx / dist;
+  const normDy = dy / dist;
+  const normDz = dz / dist;
+  entity.x += normDx * speed * dt;
+  entity.y += normDy * speed * dt;
+  entity.z += normDz * speed * dt;
   if (entity.y < 0) entity.y = 0;
 }
 
+// ---- Универсальное слияние мобов (если у обоих slimeSize > 0) ----
 function mergeMobs(entity, dt) {
-  if (entity.slimeSize <= 0) return false;
+  if (entity.slimeSize <= 0) return false; // этот моб не сливается
+
+  // Ищем другого моба с slimeSize > 0 в радиусе 2 блоков
   let target = null;
   for (const [id, e] of entities) {
-    if (e.id === entity.id || !e.alive || e.type !== 'mob' || e.slimeSize <= 0) continue;
-    if (Math.hypot(e.x - entity.x, e.z - entity.z) < 2.0) { target = e; break; }
+    if (e.id === entity.id || !e.alive || e.type !== 'mob') continue;
+    if (e.slimeSize <= 0) continue; // у второго тоже должен быть slimeSize > 0
+    const dist = Math.hypot(e.x - entity.x, e.z - entity.z);
+    if (dist < 2.0) {
+      target = e;
+      break;
+    }
   }
   if (!target) return false;
+
+  // Объединяем: создаём нового слизня с суммой статов
   const newSize = entity.slimeSize + target.slimeSize;
   const newHealth = Math.min(entity.hp + target.hp, entity.maxHp + target.maxHp);
-  despawnEntity(entity.id); despawnEntity(target.id);
-  spawnMob((entity.x + target.x) / 2, (entity.y + target.y) / 2, (entity.z + target.z) / 2, { mobType: 'slime', health: newHealth, maxHealth: entity.maxHp + target.maxHp, slimeSize: newSize, color: 0x88dd88, gravity: 1 });
-  broadcast('systemMessage', { message: `Слизни слились! Размер: ${newSize.toFixed(1)}` });
+  const newMaxHealth = entity.maxHp + target.maxHp;
+  const newJump = Math.max(entity.jumpPower, target.jumpPower) + 0.5 * newSize;
+  const newDamage = Math.max(entity.damage, target.damage) + 0.5 * newSize;
+  const newWalkSpeed = Math.min(3.0, (entity.walkSpeed + target.walkSpeed) / 2 + 0.2 * newSize);
+
+  // Позиция – средняя между двумя
+  const midX = (entity.x + target.x) / 2;
+  const midZ = (entity.z + target.z) / 2;
+  const midY = (entity.y + target.y) / 2;
+
+  // Запоминаем типы для сообщения
+  const type1 = entity.mobType;
+  const type2 = target.mobType;
+
+  // Удаляем обоих
+  despawnEntity(entity.id);
+  despawnEntity(target.id);
+
+  // Создаём нового слизня
+  const newData = {
+    mobType: 'slime',        // всегда становится слизнем
+    health: newHealth,
+    maxHealth: newMaxHealth,
+    walkSpeed: newWalkSpeed,
+    damage: newDamage,
+    slimeSize: newSize,
+    color: 0x88dd88,
+    jumpPower: newJump,
+    gravity: 1,
+  };
+  const newId = spawnMob(midX, midY, midZ, newData);
+  broadcast('systemMessage', { message: `${type1} и ${type2} слились! Размер: ${newSize.toFixed(1)}` });
   return true;
 }
 
-// ИСПРАВЛЕНИЕ: Полностью переписанная логика обновления моба
+// ---- Обновление логики одного моба ----
 function updateMob(entity, dt) {
   if (entity.type !== 'mob') return;
 
+  // Проверка слияния для любого моба с slimeSize > 0 (раз в секунду)
   if (entity.slimeSize > 0) {
     if (!entity._mergeCooldown) entity._mergeCooldown = 0;
     entity._mergeCooldown -= dt;
-    if (entity._mergeCooldown <= 0) { entity._mergeCooldown = 1.0; if (mergeMobs(entity, dt)) return; }
+    if (entity._mergeCooldown <= 0) {
+      entity._mergeCooldown = 1.0;
+      if (mergeMobs(entity, dt)) return; // если слились, этот моб уже удалён
+    }
   }
 
+  // Поиск ближайшего игрока
   let nearestPlayer = null;
-  let minTotalDist = Infinity;
-
-  // Ищем с учетом 3D расстояния (X, Y, Z)
+  let minDist = Infinity;
   for (const [id, p] of players) {
     const dx = p.x - entity.x;
-    const dy = p.y - entity.y;
     const dz = p.z - entity.z;
-    const dist = Math.hypot(dx, dy, dz); 
-    if (dist < 20 && dist < minTotalDist) {
-      minTotalDist = dist;
-      nearestPlayer = { id, x: p.x, y: p.y, z: p.z, dy };
+    const dist = Math.hypot(dx, dz);
+    if (dist < 20 && dist < minDist) {
+      minDist = dist;
+      nearestPlayer = { id, x: p.x, y: p.y, z: p.z };
     }
   }
 
   if (!nearestPlayer) {
     if (entity.gravity > 0) moveMobGround(entity, 0, 0, dt);
-    broadcast('entityUpdate', { id: entity.id, x: entity.x, y: entity.y, z: entity.z, yaw: entity.yaw, pitch: entity.pitch });
+    broadcast('entityUpdate', {
+      id: entity.id,
+      x: entity.x,
+      y: entity.y,
+      z: entity.z,
+      yaw: entity.yaw,
+      pitch: entity.pitch,
+    });
     return;
   }
 
-  // Логика Атаки
-  const isRanged = (entity.mobType === 'skeleton');
-  const vertDist = Math.abs(nearestPlayer.dy);
-  const heightLimit = isRanged ? 8 : (entity.height + 1.5);
-  
-  // Проверка дистанции, высоты и прямой видимости
-  if (minTotalDist <= entity.damageDistance && vertDist <= heightLimit) {
-    const eyeY = entity.y + entity.height * 0.8;
-    const pEyeY = nearestPlayer.y + 0.9;
-    
-    if (hasLineOfSight(entity.x, eyeY, entity.z, nearestPlayer.x, pEyeY, nearestPlayer.z)) {
-      entity.yaw = Math.atan2(nearestPlayer.x - entity.x, nearestPlayer.z - entity.z);
-      const now = Date.now() / 1000;
-      if (now - entity.lastAttackTime >= entity.attackCooldown) {
-        entity.lastAttackTime = now;
-        applyDamage(nearestPlayer.id, entity.damage, { ax: entity.x, az: entity.z, kb: 1, attackerId: null, weapon: `моб ${entity.mobType}` });
-      }
+  // Атака
+  const attackDist = entity.damageDistance;
+  if (minDist < attackDist) {
+    entity.yaw = Math.atan2(nearestPlayer.x - entity.x, nearestPlayer.z - entity.z);
+    const now = Date.now() / 1000;
+    if (now - entity.lastAttackTime >= entity.attackCooldown) {
+      entity.lastAttackTime = now;
+      applyDamage(nearestPlayer.id, entity.damage, {
+        ax: entity.x,
+        az: entity.z,
+        kb: 1,
+        attackerId: null,
+        weapon: `моб ${entity.mobType}`,
+      });
+      broadcast('systemMessage', { message: `Моб ${entity.mobType} атаковал ${players.get(nearestPlayer.id)?.nickname || 'игрока'}` });
     }
+    if (entity.gravity > 0) moveMobGround(entity, 0, 0, dt);
+    broadcast('entityUpdate', {
+      id: entity.id,
+      x: entity.x,
+      y: entity.y,
+      z: entity.z,
+      yaw: entity.yaw,
+      pitch: entity.pitch,
+    });
+    return;
   }
 
-  // Логика Движения
+  // Движение
   if (entity.gravity === 0) {
     moveMobFlying(entity, nearestPlayer.x, nearestPlayer.y + 0.5, nearestPlayer.z, dt);
   } else {
     const dx = nearestPlayer.x - entity.x;
     const dz = nearestPlayer.z - entity.z;
-    const hDist = Math.hypot(dx, dz);
-    
-    // Скелет останавливается на дистанции стрельбы, остальные подбегают
-    const stopDist = isRanged ? entity.damageDistance * 0.8 : entity.damageDistance * 0.8;
-    
-    if (hDist > stopDist) {
-      entity.vx = (dx / hDist) * entity.walkSpeed;
-      entity.vz = (dz / hDist) * entity.walkSpeed;
+    const dist = Math.hypot(dx, dz);
+    if (dist > 0.1) {
+      const speed = entity.walkSpeed;
+      const normDx = dx / dist;
+      const normDz = dz / dist;
+      entity.vx = normDx * speed;
+      entity.vz = normDz * speed;
       entity.yaw = Math.atan2(dx, dz);
     } else {
-      entity.vx = 0; entity.vz = 0;
+      entity.vx = 0;
+      entity.vz = 0;
     }
     moveMobGround(entity, entity.vx, entity.vz, dt);
   }
 
-  broadcast('entityUpdate', { id: entity.id, x: entity.x, y: entity.y, z: entity.z, yaw: entity.yaw, pitch: entity.pitch });
+  broadcast('entityUpdate', {
+    id: entity.id,
+    x: entity.x,
+    y: entity.y,
+    z: entity.z,
+    yaw: entity.yaw,
+    pitch: entity.pitch,
+  });
 }
 
+// ---- Главная функция обновления всех сущностей ----
 function updateEntities(dt) {
   for (const entity of entities.values()) {
     if (!entity.alive) continue;
-    if (entity.type === 'mob') updateMob(entity, dt);
+    if (entity.type === 'mob') {
+      updateMob(entity, dt);
+    } else if (entity.type === 'test_cube') {
+      // тестовые кубы (можно оставить для отладки)
+      const speed = 1.5;
+      const radius = 4;
+      if (!entity.data.angle) entity.data.angle = 0;
+      entity.data.angle += dt * speed;
+      if (!entity.data.centerX) {
+        entity.data.centerX = entity.x;
+        entity.data.centerY = entity.y;
+        entity.data.centerZ = entity.z;
+      }
+      entity.x = entity.data.centerX + Math.cos(entity.data.angle) * radius;
+      entity.z = entity.data.centerZ + Math.sin(entity.data.angle) * radius;
+      entity.y = entity.data.centerY + Math.sin(entity.data.angle * 0.5) * 0.5;
+      entity.yaw = entity.data.angle;
+      broadcast('entityUpdate', {
+        id: entity.id,
+        x: entity.x,
+        y: entity.y,
+        z: entity.z,
+        yaw: entity.yaw,
+        pitch: entity.pitch,
+      });
+    }
   }
 }
 
+// ========== Дополнительные функции для управления мобами ==========
+
 function spawnMob(x, y, z, mobData) {
-  if (typeof mobData === 'string') mobData = parseMobData(mobData);
+  if (typeof mobData === 'string') {
+    mobData = parseMobData(mobData);
+  }
   if (!mobData.mobType) mobData.mobType = 'zombie';
-  if (mobData.slimeSize === undefined) { const defaults = MOB_TYPES[mobData.mobType] || MOB_TYPES.zombie; mobData.slimeSize = defaults.slimeSize || 0; }
+  // Убедимся, что slimeSize установлен (если не указан, будет 0)
+  if (mobData.slimeSize === undefined) {
+    const defaults = MOB_TYPES[mobData.mobType] || MOB_TYPES.zombie;
+    mobData.slimeSize = defaults.slimeSize || 0;
+  }
   return spawnEntity('mob', x, y, z, mobData);
 }
 
 function handleSpawnMobCommand(senderId, args) {
   const player = players.get(senderId);
   if (!player) return;
-  const x = player.x + 2, z = player.z + 2;
+  const x = player.x + 2;
+  const z = player.z + 2;
   const y = getCachedHeight(Math.floor(x), Math.floor(z)) + 1;
   let mobData = 'mob:zombie,health:30,max_health:30,walk_speed:3,damage:3,damage_distance:2,gravity:1,slimeSize:0';
-  if (args.length > 0) mobData = args.join(' ');
+  if (args.length > 0) {
+    mobData = args.join(' ');
+  }
   const id = spawnMob(x, y, z, mobData);
-  broadcast('systemMessage', { message: `${player.nickname} призвал моба (id ${id})` });
+  broadcast('systemMessage', { message: `Игрок ${player.nickname} призвал моба (id ${id})` });
 }
 
+// ========== Инициализация тестовых мобов ==========
+// Создаём несколько мобов разных типов, включая слизней и мобов с slimeSize > 0
 const testMobs = [
-  { x: 5, z: 5, data: 'mob:zombie,health:30,walk_speed:2.5,damage:4,damage_distance:2,gravity:1,slimeSize:0' },
-  { x: -5, z: -5, data: 'mob:skeleton,health:20,walk_speed:4,damage:5,damage_distance:5,gravity:1,slimeSize:0' },
-  { x: 10, z: -5, data: 'mob:ghost,health:15,walk_speed:3,damage:2,damage_distance:3,gravity:0,slimeSize:0' },
-  { x: -8, z: 8, data: 'mob:slime,health:20,slimeSize:1.0,damage:2,walk_speed:1.5,damage_distance:1.5,gravity:1' },
-  { x: -6, z: 10, data: 'mob:slime,health:15,slimeSize:0.8,damage:1.5,walk_speed:1.2,damage_distance:1.5,gravity:1' },
+  { x: 5, z: 5, data: 'mob:zombie,health:30,walk_speed:2.5,damage:4,gravity:1,slimeSize:0' },
+  { x: -5, z: -5, data: 'mob:skeleton,health:20,walk_speed:4,damage:5,damage_distance:6,gravity:1,slimeSize:0' },
+  { x: 10, z: -5, data: 'mob:ghost,health:15,walk_speed:3,damage:3,damage_distance:3,gravity:0,slimeSize:0' },
+  // Два слизня с slimeSize > 0 – они сольются
+  { x: -8, z: 8, data: 'mob:slime,health:20,slimeSize:1.0,damage:2,walk_speed:1.5,gravity:1' },
+  { x: -6, z: 10, data: 'mob:slime,health:15,slimeSize:0.8,damage:1.5,walk_speed:1.2,gravity:1' },
+  // Дополнительный зомби с slimeSize > 0 – он тоже сможет сливаться со слизнями
+  { x: -2, z: 12, data: 'mob:zombie,health:40,slimeSize:1.2,damage:6,walk_speed:2,gravity:1' },
 ];
 for (const m of testMobs) {
   const y = getCachedHeight(Math.floor(m.x), Math.floor(m.z)) + 1;
@@ -611,144 +1252,497 @@ for (const m of testMobs) {
 
 // ==================== WebSocket СЕРВЕР ====================
 const wss = new WebSocketServer({ server: httpServer });
-function send(ws, type, data) { if (ws.readyState === 1) ws.send(JSON.stringify({ type, ...data })); }
+function send(ws, type, data) { if (ws.readyState === 1) ws.send(JSON.stringify({type,...data})); }
 function broadcast(type, data, exceptId = null) {
-  const msg = JSON.stringify({ type, ...data });
+  const msg = JSON.stringify({type,...data});
   for (const [id, q] of players) if (id !== exceptId && q.ws.readyState === 1) q.ws.send(msg);
 }
-function syncEffects(q) { send(q.ws, 'effects', { list: [...q.effects].map(([e, v]) => ({ e, until: v.until, power: v.power })) }); }
+function syncEffects(q) { send(q.ws,'effects',{list:[...q.effects].map(([e,v])=>({e,until:v.until,power:v.power}))}); }
 
-// Восстановленная функция applyDamage
+// ==================================================================
+//                   НОВАЯ ФУНКЦИЯ applyDamage (с поддержкой мобов)
+// ==================================================================
 function applyDamage(targetId, dmg, src = {}) {
+  // Обработка мобов (если targetId строка вида mob_123)
   if (typeof targetId === 'string' && targetId.startsWith('mob_')) {
     const entityId = parseInt(targetId.slice(4), 10);
+    const entity = entities.get(entityId);
+    if (!entity || !entity.alive || entity.type !== 'mob') return;
     damageEntity(entityId, dmg, src);
     return;
   }
 
+  // Далее оригинальный код для игроков
   const target = players.get(targetId);
   if (!target) return;
   const attackerId = src.attackerId;
   const attacker = attackerId ? players.get(attackerId) : null;
-  
   if (src.weapon?.includes('огн') && target.effects.has('fire_resist')) dmg *= (1 - target.effects.get('fire_resist').power);
   if (target.effects.has('vulnerability')) dmg *= 1.5;
   if (target.effects.has('weakness')) dmg *= 0.5;
-  
   const ward = target.effects.get('ward');
-  if (ward && dmg > 0) { const abs = Math.min(ward.power, dmg); ward.power -= abs; dmg -= abs; if (ward.power <= 0) target.effects.delete('ward'); syncEffects(target); }
-  
-  const stoneskin = target.effects.get('stoneskin');
-  dmg *= 1 - 0.04 * (target.armor + (stoneskin ? stoneskin.power : 0));
-  
-  if (dmg <= 0 && !(src.kb > 0)) return;
-  
-  if (target.effects.has('ice_skin') && attackerId && attackerId !== targetId && attacker) {
-    if (!attacker.effects.has('freeze')) { attacker.effects.set('freeze', { until: Date.now() + (target.effects.get('ice_skin').power || 2) * 1000, power: 1 }); syncEffects(attacker); }
+  if (ward && dmg > 0) {
+    const abs = Math.min(ward.power, dmg);
+    ward.power -= abs; dmg -= abs;
+    if (ward.power <= 0) target.effects.delete('ward');
+    syncEffects(target);
   }
-  
+  const stoneskin = target.effects.get('stoneskin');
+  const bonus = stoneskin ? stoneskin.power : 0;
+  dmg *= 1 - 0.04 * (target.armor + bonus);
+  if (dmg <= 0 && !(src.kb > 0)) return;
+  if (target.effects.has('ice_skin') && attackerId && attackerId !== targetId && attacker) {
+    if (!attacker.effects.has('freeze')) {
+      attacker.effects.set('freeze', { until: Date.now() + (target.effects.get('ice_skin').power || 2) * 1000, power: 1 });
+      syncEffects(attacker);
+    }
+  }
+  if (target.chainLink && players.has(target.chainLink)) {
+    const linked = players.get(target.chainLink);
+    if (linked && linked !== target && linked.hp > 0 && dmg > 0) {
+      const ldmg = dmg * (target.chainTransfer || 0.5);
+      if (ldmg > 0) applyDamage(target.chainLink, ldmg, { ...src, weapon: 'цепочки послушания', kb: 0 });
+    }
+  }
+  if (target.sphereReflect && target.sphereReflect > 0 && attackerId && attackerId !== targetId && attacker && attacker.hp > 0) {
+    const refl = dmg * target.sphereReflect;
+    if (refl > 0) applyDamage(attackerId, refl, { weapon: 'отражённый урон', attackerId: targetId });
+  }
   const wasAlive = target.hp > 0;
   target.hp -= Math.max(0, dmg);
-  
   if (target.hp <= 4 && !target.phoenixUsed && target.effects.has('phoenix')) {
     target.phoenixUsed = true; target.hp = 8;
     broadcast('systemMessage', { message: `${target.nickname} возродился как Феникс!` });
     broadcast('hp', { id: targetId, hp: target.hp });
+    for (const [id, p] of players) {
+      if (id === targetId) continue;
+      if (Math.hypot(p.x - target.x, p.z - target.z) < 8) {
+        p.effects.set('blind', { until: Date.now() + 5000, power: 1 });
+        p.effects.set('fear', { until: Date.now() + 5000, power: 1 });
+        syncEffects(p);
+      }
+    }
     return;
   }
-  
   if (target.hp <= 0 && wasAlive) {
     target.hp = 50; target.effects.clear(); syncEffects(target);
     broadcast('respawn', { id: targetId });
     broadcast('hp', { id: targetId, hp: 50 });
     target.phoenixUsed = false;
     if (attackerId && attackerId !== targetId && attacker) {
-      broadcast('systemMessage', { message: `${attacker.nickname} убил ${target.nickname}` });
+      const msg = `${attacker.nickname} убил ${target.nickname} с помощью ${src.weapon || 'неизвестного оружия'}`;
+      broadcast('systemMessage', { message: msg }); console.log(msg);
+    } else {
+      broadcast('systemMessage', { message: `${target.nickname} погиб` });
     }
-    return;
+  } else {
+    if (dmg > 0) broadcast('hp', { id: targetId, hp: target.hp });
+    send(target.ws, 'damaged', { ax: src.ax ?? target.x, az: src.az ?? target.z, hp: target.hp, kb: src.kb ?? 6 });
   }
-  
-  send(target.ws, 'damaged', { hp: target.hp, ax: src.ax, az: src.az, kb: src.kb || 0 });
-  broadcast('hp', { id: targetId, hp: target.hp }, targetId);
 }
 
-// Контекст для магии
+// Зоны, тотемы, шаги
+const activeZones = new Map();
+function addZone(x, z, radius, effect, ownerId, duration) {
+  const id = Math.random();
+  activeZones.set(id, { x, z, radius, effect, owner: ownerId, until: Date.now() + duration * 1000 });
+  setTimeout(() => activeZones.delete(id), duration * 1000);
+  broadcast('zoneSpawn', { id, x, z, radius, effect, duration });
+}
+
+const timeSlowZones = new Map();
+function addTimeSlowZone(casterId, x, z, radius, duration) {
+  const id = Math.random();
+  timeSlowZones.set(id, { x, z, radius, endTime: Date.now() + duration * 1000, casterId });
+  broadcast('timeSlowZone', { zoneId: id, x, z, radius, duration });
+  setTimeout(() => timeSlowZones.delete(id), duration * 1000);
+}
+
+const activeTotems = new Map();
+function addTotem(casterId, x, z, radius, duration) {
+  const id = Math.random();
+  let lastTick = Date.now();
+  const interval = setInterval(() => {
+    const now = Date.now();
+    if (now - lastTick < 3000) return;
+    lastTick = now;
+    const inRange = [...players.values()].filter(p => p.id !== casterId && Math.hypot(p.x - x, p.z - z) < radius);
+    if (inRange.length) {
+      const t = inRange[Math.floor(Math.random() * inRange.length)];
+      t.effects.set('speed', { until: now + 5000, power: 1.5 });
+      syncEffects(t);
+      broadcast('totemCharge', { targetId: t.id, casterId });
+      broadcast('totemPower', { targetId: t.id, power: 6 });
+    }
+  }, 3000);
+  activeTotems.set(id, { x, z, radius, endTime: Date.now() + duration * 1000, casterId, interval });
+  broadcast('totemSpawn', { id, x, z, radius, duration });
+  setTimeout(() => {
+    const t = activeTotems.get(id);
+    if (t) { clearInterval(t.interval); activeTotems.delete(id); broadcast('totemEnd', { id }); }
+  }, duration * 1000);
+}
+
+function performShadowStep(casterId) {
+  const caster = players.get(casterId);
+  if (!caster) return;
+  let nearest = null, minDist = Infinity;
+  for (const [pid, p] of players) {
+    if (pid === casterId) continue;
+    const dist = Math.hypot(caster.x - p.x, caster.z - p.z);
+    if (dist < minDist && dist < 10) { minDist = dist; nearest = p; }
+  }
+  if (nearest) {
+    const dirX = -Math.sin(nearest.yaw), dirZ = -Math.cos(nearest.yaw);
+    const teleX = nearest.x + dirX * 1.5, teleZ = nearest.z + dirZ * 1.5;
+    const teleY = getCachedHeight(teleX, teleZ) + 1;
+    const oldX = caster.x, oldZ = caster.z;
+    caster.x = teleX; caster.y = teleY; caster.z = teleZ;
+    broadcast('teleport', { id: casterId, x: caster.x, y: caster.y, z: caster.z });
+    broadcast('shadowStepFx', { x0: oldX, z0: oldZ, x1: caster.x, z1: caster.z });
+    broadcast('systemMessage', { message: `${caster.nickname} использовал Теневой шаг` });
+  } else {
+    send(caster.ws, 'systemMessage', { message: 'Нет цели для теневого шага' });
+  }
+}
+
+let pendingBlocks = [];
+let pendingTimer = null;
+function queueBlockUpdate(x, y, z, t) {
+  edits.set(`${x},${y},${z}`, t);
+  pendingBlocks.push({ x, y, z, t });
+  if (!pendingTimer) pendingTimer = setTimeout(flushBlockBroadcasts, 0);
+}
+function flushBlockBroadcasts() {
+  const blocks = pendingBlocks;
+  pendingBlocks = [];
+  pendingTimer = null;
+  if (blocks.length === 1) broadcast('blockUpdate', blocks[0]);
+  else if (blocks.length > 1) broadcast('blocksUpdate', { blocks });
+}
+
+// ==================================================================
+//                   НОВЫЙ magicCtx (с поддержкой мобов)
+// ==================================================================
 const magicCtx = {
-  emit: (type, data) => broadcast(type, data),
-  getBlock: (x, y, z) => getBlockType(x, y, z),
-  setBlock: (x, y, z, t) => { edits.set(`${x},${y},${z}`, t); broadcast('blockUpdate', { x, y, z, t }); },
-  getPlayers: () => players,
-  applyDamage: applyDamage,
-  addEffect: (id, eff, dur, pow) => { const p = players.get(id); if (p) { p.effects.set(eff, { until: Date.now() + dur * 1000, power: pow }); syncEffects(p); } },
-  clearDebuffs: (id) => { const p = players.get(id); if(p){ for(const k of p.effects.keys()) if(!['ward','speed','levitate','regen'].includes(k)) p.effects.delete(k); syncEffects(p);}},
-  getMana: (id) => players.get(id)?.mana || 0,
-  spendMana: (id, cost) => { const p = players.get(id); if (p) { p.mana -= cost; send(p.ws, 'mana', { mana: p.mana }); } },
-  healPlayer: (id, amt) => { const p = players.get(id); if (p) { p.hp = Math.min(100, p.hp + amt); send(p.ws, 'hp', { id, hp: p.hp }); broadcast('hp', { id, hp: p.hp }, id); } },
+  getBlock: getBlockType,
+  setBlock: queueBlockUpdate,
   terrainHeight: getCachedHeight,
-  teleportPlayer: (id, x, y, z) => { const p = players.get(id); if(p){ p.x=x; p.y=y; p.z=z; send(p.ws, 'teleport', {id, x, y, z}); broadcast('teleport', {id, x, y, z}, id); } },
-  stomp: () => {}, blackVortex: () => {}, addTotem: () => {}, addZone: () => {}, chainPlayers: () => {}, swapPositions: () => {}, createProtectionSphere: () => {}, summonAsteroid: () => {}, lightCage: () => {}, shadowShackles: () => {}, addTimeSlowZone: () => {}
+  getPlayers: () => {
+    const result = [...players].map(([id, q]) => [id, { x: q.x, y: q.y, z: q.z, hp: q.hp }]);
+    for (const [id, e] of entities) {
+      if (e.alive && e.type === 'mob') {
+        result.push([`mob_${id}`, { x: e.x, y: e.y, z: e.z, hp: e.hp, isMob: true }]);
+      }
+    }
+    return result;
+  },
+  applyDamage,
+  addEffect(id, type, dur, power) {
+    const q = players.get(id); if (!q) return;
+    let data;
+    if (power && typeof power === 'object') data = { ...power, until: Date.now() + dur * 1000 };
+    else data = { power: power, until: Date.now() + dur * 1000 };
+    if (type === 'regen') data.lastTick = Date.now();
+    q.effects.set(type, data);
+    syncEffects(q);
+  },
+  healPlayer(id, amount) {
+    const q = players.get(id); if (!q || q.effects.has('curse')) return;
+    q.hp = Math.min(50, q.hp + amount);
+    broadcast('hp', { id, hp: q.hp });
+  },
+  clearDebuffs(id) {
+    const q = players.get(id); if (!q) return;
+    for (const b of ['burning','slow','freeze','curse','blind','weakness','vulnerability','disorient','disarm','shadow_shackles']) q.effects.delete(b);
+    syncEffects(q);
+  },
+  getMana: (id) => players.get(id)?.mana ?? 0,
+  spendMana(id, cost) {
+    const q = players.get(id); if (!q) return;
+    q.mana -= cost;
+    send(q.ws, 'mana', { mana: Math.floor(q.mana) });
+  },
+  teleportPlayer(id, x, y, z) {
+    const q = players.get(id); if (!q) return;
+    q.x = x; q.y = y; q.z = z;
+    broadcast('teleport', { id, x: q.x, y: q.y, z: q.z });
+  },
+  emit(type, data) { broadcast(type, data); },
+  addZone, addTotem, addTimeSlowZone,
+  chainPlayers(casterId, targetId, transfer = 0.5) {
+    const caster = players.get(casterId), target = players.get(targetId);
+    if (!caster || !target) return false;
+    if (caster.chainLink) delete players.get(caster.chainLink)?.chainLink;
+    if (target.chainLink) delete players.get(target.chainLink)?.chainLink;
+    caster.chainLink = targetId; target.chainLink = casterId;
+    caster.chainTransfer = transfer; target.chainTransfer = transfer;
+    broadcast('chainLink', { id1: casterId, id2: targetId });
+    return true;
+  },
+  swapPositions(id1, id2) {
+    const p1 = players.get(id1), p2 = players.get(id2);
+    if (!p1 || !p2) return;
+    [p1.x, p2.x] = [p2.x, p1.x]; [p1.y, p2.y] = [p2.y, p1.y]; [p1.z, p2.z] = [p2.z, p1.z];
+    broadcast('teleport', { id: id1, x: p1.x, y: p1.y, z: p1.z });
+    broadcast('teleport', { id: id2, x: p2.x, y: p2.y, z: p2.z });
+    broadcast('swapFx', { id1, id2 });
+  },
+  createProtectionSphere(casterId, x, y, z, duration) {
+    const caster = players.get(casterId); if (!caster) return;
+    caster.sphereEnd = Date.now() + duration * 1000; caster.sphereReflect = 0.5;
+    broadcast('sphereSpawn', { casterId, x, y, z, radius: 3, duration });
+    const interval = setInterval(() => {
+      if (!caster || Date.now() > caster.sphereEnd) {
+        clearInterval(interval); if (caster) caster.sphereReflect = null;
+        broadcast('sphereEnd', { casterId }); return;
+      }
+      for (const [id, p] of players) {
+        if (Math.hypot(p.x - x, p.z - z) < 3 && p.y > y - 1 && p.y < y + 2) {
+          p.hp = Math.min(50, p.hp + 2); broadcast('hp', { id, hp: p.hp });
+        }
+      }
+    }, 1000);
+    setTimeout(() => { clearInterval(interval); if (caster) caster.sphereReflect = null; broadcast('sphereEnd', { casterId }); }, duration * 1000);
+  },
+  summonAsteroid(casterId, x, z, yaw) {
+    const impactX = x + Math.sin(yaw) * 3, impactZ = z + Math.cos(yaw) * 3;
+    broadcast('asteroidStart', { casterId, x: impactX, z: impactZ, startY: 60 });
+    setTimeout(() => {
+      const radius = 5, dmg = 18;
+      const explode = (xx, yy, zz, rad, dmg2, owner) => {
+        const rr = rad * 1.6;
+        for (const [id, p] of players) {
+          if (id === owner) continue;
+          const d2 = (p.x - xx) ** 2 + (p.y + 0.9 - yy) ** 2 + (p.z - zz) ** 2;
+          if (d2 < rr * rr) {
+            const ad = dmg2 * (1 - Math.sqrt(d2) / rr);
+            applyDamage(id, ad, { ax: xx, az: zz, kb: 6 + rad, attackerId: owner, weapon: 'астероида' });
+          }
+        }
+        for (let dx = -rad; dx <= rad; dx++) {
+          for (let dz = -rad; dz <= rad; dz++) {
+            if (Math.hypot(dx, dz) < rad) {
+              const bx = Math.floor(impactX + dx), bz = Math.floor(impactZ + dz);
+              const yb = getCachedHeight(bx, bz);
+              for (let h = 0; h < Math.max(1, rad - Math.floor(Math.hypot(dx, dz))); h++) {
+                queueBlockUpdate(bx, yb + h, bz, STONE);
+              }
+            }
+          }
+        }
+        flushBlockBroadcasts();
+        broadcast('asteroidImpact', { x: impactX, z: impactZ, radius: rad });
+      };
+      explode(impactX, 0, impactZ, radius, dmg, casterId);
+    }, 1500);
+  },
+  stomp(casterId, x, z, radius) {
+    broadcast('stompFx', { x, z, radius });
+    for (const [id, p] of players) {
+      if (id === casterId) continue;
+      if (Math.hypot(p.x - x, p.z - z) < radius) {
+        p.y += 3; broadcast('teleport', { id, x: p.x, y: p.y, z: p.z });
+        applyDamage(id, 8, { ax: x, az: z, kb: 12, attackerId: casterId, weapon: 'топота' });
+        p.effects.set('disarm', { until: Date.now() + 5000, power: 1 });
+        syncEffects(p);
+      }
+    }
+  },
+  blackVortex(casterId, x, z, duration) {
+    broadcast('vortexSpawn', { vortexId: Math.random(), x, z, radius: 4, duration });
+    const end = Date.now() + duration * 1000;
+    const interval = setInterval(() => {
+      if (Date.now() > end) { clearInterval(interval); broadcast('vortexEnd', {}); return; }
+      for (const [id, p] of players) {
+        if (id !== casterId && Math.hypot(p.x - x, p.z - z) < 6) {
+          applyDamage(id, 6, { ax: x, az: z, kb: 5, attackerId: casterId, weapon: 'чёрного вихря' });
+        }
+      }
+    }, 1000);
+  },
+  lightCage(casterId, targetId) {
+    broadcast('cageSpawn', { casterId, targetId });
+    const end = Date.now() + 6000;
+    const interval = setInterval(() => {
+      if (Date.now() > end) { clearInterval(interval); broadcast('cageEnd', { targetId }); return; }
+      applyDamage(targetId, 4, { ax: 0, az: 0, kb: 0, attackerId: casterId, weapon: 'световой клетки' });
+    }, 1000);
+  },
+  shadowShackles(casterId, targetId) {
+    const target = players.get(targetId);
+    if (target) { target.effects.set('shadow_shackles', { until: Date.now() + 6000, power: 1 }); syncEffects(target); broadcast('shacklesFx', { targetId }); }
+  },
+  castProjectiles: () => {},
 };
+
 const magic = createMagicEngine(magicCtx);
 
-// Обработка подключений
+const TICK = 50;
+let lastManaSync = 0;
+setInterval(() => {
+  const now = Date.now(), dt = TICK / 1000;
+  for (const [id, q] of players) {
+    let changed = false;
+    for (const [e, v] of q.effects) {
+      if (now > v.until) { q.effects.delete(e); changed = true; }
+    }
+    const regen = q.effects.get('regen');
+    if (regen && now >= (regen.lastTick || 0) + 1000) {
+      regen.lastTick = now;
+      if (!q.effects.has('curse')) {
+        q.hp = Math.min(50, q.hp + regen.power);
+        broadcast('hp', { id, hp: q.hp });
+      }
+    }
+    const aura = q.effects.get('fire_aura');
+    if (aura) {
+      if (!q.lastAuraTick) q.lastAuraTick = 0;
+      if (now - q.lastAuraTick >= 1000) {
+        q.lastAuraTick = now;
+        const rad = aura.radius || 3, dmg = aura.power;
+        for (const [pid, p] of players) {
+          if (pid === id) continue;
+          if (Math.hypot(q.x - p.x, q.z - p.z) < rad) {
+            applyDamage(pid, dmg, { attackerId: id, weapon: 'огненной ауры', kb: 0 });
+            if (!p.effects.has('burning')) { p.effects.set('burning', { until: now + 3000, power: 1 }); syncEffects(p); }
+          }
+        }
+      }
+    }
+    const burn = q.effects.get('burning');
+    if (burn) {
+      q.burnAcc = (q.burnAcc || 0) + dt;
+      if (q.burnAcc >= 1) { q.burnAcc -= 1; applyDamage(id, burn.power, { kb: 0 }); }
+    }
+
+    const bx = Math.floor(q.x), by = Math.floor(q.y), bz = Math.floor(q.z);
+    const blockUnder = getBlockType(bx, by, bz);
+    if (blockUnder === CACTUS || blockUnder === MAGMA) {
+      if (!q.cactusCooldown || now - q.cactusCooldown > 500) {
+        q.cactusCooldown = now;
+        applyDamage(id, blockUnder === MAGMA ? 2 : 1, { ax: q.x, az: q.z, kb: 0, weapon: blockUnder === MAGMA ? 'магмы' : 'кактуса' });
+      }
+    }
+
+    if (changed) syncEffects(q);
+    q.mana = Math.min(20, q.mana + dt);
+  }
+
+  for (const [zoneId, zone] of activeZones) {
+    if (now > zone.until) { activeZones.delete(zoneId); broadcast('zoneEnd', { id: zoneId }); continue; }
+    if (zone.effect === 'levitate_circle') {
+      for (const [pid, p] of players) {
+        if (Math.hypot(p.x - zone.x, p.z - zone.z) < zone.radius && !p.effects.has('levitate')) {
+          p.effects.set('levitate', { until: now + 500, power: 1 });
+          syncEffects(p);
+        }
+      }
+    }
+  }
+  for (const [zoneId, zone] of timeSlowZones) {
+    if (now > zone.endTime) { timeSlowZones.delete(zoneId); continue; }
+    for (const [pid, p] of players) {
+      if (pid === zone.casterId) continue;
+      if (Math.hypot(p.x - zone.x, p.z - zone.z) < zone.radius) {
+        if (!p.effects.has('time_slow')) { p.effects.set('time_slow', { until: now + 500, power: 0.5 }); syncEffects(p); }
+      }
+    }
+  }
+
+  // Обновление сущностей
+  updateEntities(dt);
+
+  if (now - lastManaSync > 1000) {
+    lastManaSync = now;
+    for (const q of players.values()) send(q.ws, 'mana', { mana: Math.floor(q.mana) });
+  }
+  magic.tick(dt);
+}, TICK);
+
 wss.on('connection', (ws) => {
   const id = nextId++;
   const nickname = randomNickname();
-  const spawnY = getCachedHeight(0, 0) + 2;
-  
-  const playerData = {
-    ws, id, nickname, x: 0.5, y: spawnY, z: 0.5, yaw: 0, pitch: 0,
-    hp: 50, mana: 20, maxMana: 20, armor: 0, effects: new Map(), phoenixUsed: false
-  };
-  players.set(id, playerData);
+  players.set(id, {
+    id, ws, nickname,
+    x: 0.5, y: 80, z: 0.5, yaw: 0,
+    hp: 50, armor: 0, mana: 20, lastAttack: 0,
+    effects: new Map(), phoenixUsed: false
+  });
+  console.log(`+ ${nickname} (id ${id}) · всего: ${players.size}`);
 
   send(ws, 'init', {
     id, nickname, seed,
-    edits: [...edits.entries()],
-    players: [...players.values()].filter(p => p.id !== id).map(p => ({ id: p.id, x: p.x, y: p.y, z: p.z, yaw: p.yaw, nickname: p.nickname })),
-    entities: [...entities.values()].map(e => ({ id: e.id, type: e.type, x: e.x, y: e.y, z: e.z, yaw: e.yaw, pitch: e.pitch, data: e.type === 'mob' ? { mobType: e.mobType, hp: e.hp, maxHp: e.maxHp, color: e.color, width: e.width, height: e.height, gravity: e.gravity, slimeSize: e.slimeSize } : e.data })),
-    snapshot: magic.getSnapshot()
+    edits: [...edits],
+    snapshot: magic.getSnapshot(),
+    players: [...players].filter(([pid]) => pid !== id).map(([pid, q]) => ({
+      id: pid, nickname: q.nickname, x: q.x, y: q.y, z: q.z, yaw: q.yaw
+    })),
+    zones: [...activeZones].map(([zid, z]) => ({ id: zid, x: z.x, z: z.z, radius: z.radius, effect: z.effect })),
+    timeSlowZones: [...timeSlowZones].map(([zid, z]) => ({ id: zid, x: z.x, z: z.z, radius: z.radius, duration: (z.endTime - Date.now()) / 1000 })),
+    entities: [...entities.values()].map(e => ({
+      id: e.id,
+      type: e.type,
+      x: e.x, y: e.y, z: e.z,
+      yaw: e.yaw, pitch: e.pitch,
+      data: e.data,
+    })),
   });
-
   broadcast('join', { id, nickname }, id);
-  broadcast('systemMessage', { message: `${nickname} присоединился` });
 
   ws.on('message', (raw) => {
-    try {
-      const m = JSON.parse(raw);
-      if (m.type === 'move') {
-        playerData.x = m.x; playerData.y = m.y; playerData.z = m.z; playerData.yaw = m.yaw; playerData.pitch = m.pitch;
-        broadcast('move', { id, x: m.x, y: m.y, z: m.z, yaw: m.yaw, pitch: m.pitch }, id);
-      } else if (m.type === 'chat') {
-        broadcast('chat', { senderId: id, senderNick: nickname, message: m.message });
-      } else if (m.type === 'cast') {
-        magic.cast(id, m.elements, m.dir, m.origin, m.yaw, m.hand);
-      } else if (m.type === 'blockEdit') {
-        edits.set(`${m.x},${m.y},${m.z}`, m.t);
-        broadcast('blockUpdate', { x: m.x, y: m.y, z: m.z, t: m.t }, id);
-      } else if (m.type === 'hit') {
-        if (m.targetType === 'entity') damageEntity(m.targetId, m.damage || 5, { attackerId: id, weapon: 'оружие' });
-      } else if (m.type === 'command') {
-        if (m.command === 'spawnmob') handleSpawnMobCommand(id, m.args || []);
+    let msg; try { msg = JSON.parse(raw); } catch { return; }
+    const q = players.get(id); if (!q) return;
+    if (msg.type === 'move') {
+      q.x = msg.x; q.y = msg.y; q.z = msg.z; q.yaw = msg.yaw;
+      broadcast('move', { id, x: q.x, y: q.y, z: q.z, yaw: q.yaw }, id);
+    } else if (msg.type === 'setBlock') {
+      edits.set(`${msg.x},${msg.y},${msg.z}`, msg.t);
+      broadcast('blockUpdate', { x: msg.x, y: msg.y, z: msg.z, t: msg.t }, id);
+    } else if (msg.type === 'attack') {
+      const t = players.get(msg.target), now = Date.now();
+      if (!t || now - q.lastAttack < 400) return;
+      if ((q.x - t.x) ** 2 + (q.y - t.y) ** 2 + (q.z - t.z) ** 2 > 36) return;
+      q.lastAttack = now;
+      if (q.effects.has('chain_lightning') && Math.random() < (q.effects.get('chain_lightning').power || 0.2)) {
+        applyDamage(msg.target, 6, { ax: q.x, az: q.z, kb: 5, attackerId: id, weapon: 'разряда' });
+        const cands = [...players.values()].filter(p => p.id !== id && p.id !== msg.target && Math.hypot(p.x - t.x, p.z - t.z) < 5);
+        if (cands.length) {
+          const next = cands[0];
+          applyDamage(next.id, 4, { ax: q.x, az: q.z, kb: 3, attackerId: id, weapon: 'разряда (перескок)' });
+          broadcast('lightningEffect', { from: msg.target, to: next.id });
+        } else broadcast('lightningEffect', { from: id, to: msg.target });
       }
-    } catch (e) { console.error('Msg err:', e); }
+      applyDamage(msg.target, 4, { ax: q.x, az: q.z, kb: 8, attackerId: id, weapon: 'меча' });
+    } else if (msg.type === 'cast') {
+      magic.cast(id, msg.elements, msg.dir, { x: q.x, y: q.y + 1.62, z: q.z }, q.yaw, msg.hand || 'left');
+    } else if (msg.type === 'chat') {
+      broadcast('chat', { senderId: id, senderNick: q.nickname, message: msg.message }, id);
+    } else if (msg.type === 'shadow_step') {
+      performShadowStep(id);
+    } else if (msg.type === 'swap_positions') {
+      const target = players.get(msg.target);
+      if (target && Math.hypot(q.x - target.x, q.z - target.z) < 10) magicCtx.swapPositions(id, msg.target);
+    } else if (msg.type === 'spawnEntity') {
+      const x = q.x + (Math.random() - 0.5) * 4;
+      const z = q.z + (Math.random() - 0.5) * 4;
+      const y = q.y + 1;
+      spawnEntity('test_cube', x, y, z, { color: Math.random() * 0xffffff });
+    // ========== НОВЫЙ ОБРАБОТЧИК АТАКИ ПО СУЩНОСТИ ==========
+    } else if (msg.type === 'attackEntity') {
+      const entity = entities.get(msg.entityId);
+      if (!entity || !entity.alive || entity.type !== 'mob') return;
+      // Урон от игрока (базовый 4, можно изменить)
+      damageEntity(msg.entityId, 4, { attackerId: id, weapon: 'меч' });
+    }
   });
 
   ws.on('close', () => {
     players.delete(id);
     broadcast('leave', { id });
-    broadcast('systemMessage', { message: `${nickname} покинул игру` });
+    console.log(`- ${nickname} (id ${id}) · всего: ${players.size}`);
   });
 });
 
-// Игровой цикл
-const TICK_RATE = 50; 
-setInterval(() => {
-  const dt = TICK_RATE / 1000;
-  updateEntities(dt);
-  magic.tick(dt);
-}, TICK_RATE);
-
-httpServer.listen(3000, () => {
-  console.log(`🚀 Сервер запущен на http://localhost:3000`);
-});
+const PORT = process.env.PORT || 8081;
+httpServer.listen(PORT, () => console.log(`Игра: http://localhost:${PORT} · сид: ${seed}`));
