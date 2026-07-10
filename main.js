@@ -1097,31 +1097,10 @@ const remoteEntities = new Map();
 // ========== ИСПРАВЛЕННАЯ ФУНКЦИЯ СОЗДАНИЯ СУЩНОСТИ ==========
 function createEntityFromData(data) {
   const info = data.data || {};
-  let mobType = info.mobType;
-  // Если mobType не определён, определяем по другим параметрам (fallback)
-  if (!mobType) {
-    if (info.slimeSize && info.slimeSize > 0) mobType = 'slime';
-    else if (info.gravity === 0) mobType = 'ghost';
-    else if (info.damageDistance && info.damageDistance > 3) mobType = 'skeleton';
-    else mobType = 'zombie';
-  }
-  // Дефолтные цвета и размеры
-  const defaultColors = {
-    zombie: 0x44aa44,
-    skeleton: 0xcccccc,
-    ghost: 0x88aaff,
-    slime: 0x88dd88,
-  };
-  const defaultSizes = {
-    zombie: { width: 0.6, height: 1.8 },
-    skeleton: { width: 0.6, height: 1.8 },
-    ghost: { width: 0.6, height: 1.8 },
-    slime: { width: 0.6, height: 0.6 },
-  };
-  const color = info.color ?? defaultColors[mobType] ?? 0x44aaff;
-  const defSize = defaultSizes[mobType] || { width: 0.6, height: 0.6 };
-  const width = info.width ?? defSize.width;
-  const height = info.height ?? defSize.height;
+  const mobType = info.mobType || 'zombie';
+  const color = info.color ?? 0x44aaff;
+  const width = info.width ?? 0.6;
+  const height = info.height ?? 0.6;
 
   console.log(`[Entity] ID: ${data.id}, type: ${mobType}, size: ${width}x${height}, color: ${color.toString(16)}`);
 

@@ -764,60 +764,28 @@ const entities = new Map();
 // Конфигурация мобов по умолчанию
 const MOB_TYPES = {
   zombie: {
-    health: 30,
-    maxHealth: 30,
-    walkSpeed: 3.0,
-    damage: 3.0,
-    damageDistance: 2.0,
-    attackCooldown: 1.0,
-    width: 0.6,
-    height: 1.8,
-    color: 0x44aa44,
-    gravity: 1,
-    jumpPower: 12.0,
-    slimeSize: 0,
+    health: 30, maxHealth: 30, walkSpeed: 3.0, damage: 3.0,
+    damageDistance: 2.0, attackCooldown: 1.0,
+    width: 0.6, height: 1.8,
+    color: 0x44aa44, gravity: 1, jumpPower: 12.0, slimeSize: 0,
   },
   skeleton: {
-    health: 20,
-    maxHealth: 20,
-    walkSpeed: 4.0,
-    damage: 4.0,
-    damageDistance: 5.0,
-    attackCooldown: 1.5,
-    width: 0.6,
-    height: 1.8,
-    color: 0xcccccc,
-    gravity: 1,
-    jumpPower: 12.0,
-    slimeSize: 0,
+    health: 20, maxHealth: 20, walkSpeed: 4.0, damage: 4.0,
+    damageDistance: 5.0, attackCooldown: 1.5,
+    width: 0.6, height: 1.8,
+    color: 0xcccccc, gravity: 1, jumpPower: 12.0, slimeSize: 0,
   },
   ghost: {
-    health: 15,
-    maxHealth: 15,
-    walkSpeed: 3.0,
-    damage: 2.0,
-    damageDistance: 3.0,
-    attackCooldown: 1.0,
-    width: 0.6,
-    height: 1.8,
-    color: 0x88aaff,
-    gravity: 0,
-    jumpPower: 0,
-    slimeSize: 0,
+    health: 15, maxHealth: 15, walkSpeed: 3.0, damage: 2.0,
+    damageDistance: 3.0, attackCooldown: 1.0,
+    width: 0.6, height: 1.8,
+    color: 0x88aaff, gravity: 0, jumpPower: 0, slimeSize: 0,
   },
   slime: {
-    health: 20,
-    maxHealth: 20,
-    walkSpeed: 1.5,
-    damage: 2.0,
-    damageDistance: 1.5,
-    attackCooldown: 1.0,
-    width: 0.6,
-    height: 0.6,
-    color: 0x88dd88,
-    gravity: 1,
-    jumpPower: 8.0,
-    slimeSize: 1.0,
+    health: 20, maxHealth: 20, walkSpeed: 1.5, damage: 2.0,
+    damageDistance: 1.5, attackCooldown: 1.0,
+    width: 0.6, height: 0.6,
+    color: 0x88dd88, gravity: 1, jumpPower: 8.0, slimeSize: 1.0,
   },
 };
 
@@ -880,6 +848,13 @@ function parseMobData(str) {
     if (!key || value === undefined) continue;
     const trimmedKey = MOB_KEY_MAP[key.trim()] || key.trim();
     let trimmedVal = value.trim();
+    
+    // Специальная обработка для цвета (шестнадцатеричные числа)
+    if (trimmedKey === 'color' && typeof trimmedVal === 'string' && trimmedVal.startsWith('0x')) {
+      result[trimmedKey] = parseInt(trimmedVal, 16);
+      continue;
+    }
+    
     let numVal = parseFloat(trimmedVal);
     if (!isNaN(numVal)) {
       result[trimmedKey] = numVal;
@@ -1064,15 +1039,17 @@ function mergeMobs(entity, dt) {
   despawnEntity(target.id);
 
   const newData = {
-    mobType: 'slime',
-    health: newHealth,
-    maxHealth: newMaxHealth,
-    walkSpeed: newWalkSpeed,
-    damage: newDamage,
-    slimeSize: newSize,
-    color: 0x88dd88,
-    jumpPower: newJump,
-    gravity: 1,
+  mobType: 'slime',
+  health: newHealth,
+  maxHealth: newMaxHealth,
+  walkSpeed: newWalkSpeed,
+  damage: newDamage,
+  slimeSize: newSize,
+  color: 0x88dd88,
+  jumpPower: newJump,
+  gravity: 1,
+  width: 0.6 * (1 + 0.5 * newSize),  // увеличиваем размер с ростом slimeSize
+  height: 0.6 * (1 + 0.5 * newSize),
   };
   const newId = spawnMob(midX, midY, midZ, newData);
   broadcast('systemMessage', { message: `${type1} и ${type2} слились! Размер: ${newSize.toFixed(1)}` });
