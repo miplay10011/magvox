@@ -1025,6 +1025,7 @@ const EVENTS = {
 
   // ========== СОБЫТИЯ СУЩНОСТЕЙ ==========
   entitySpawn: (m) => {
+    console.log('entitySpawn raw data:', m);
     createEntityFromData(m);
   },
   entityUpdate: (m) => {
@@ -1094,20 +1095,13 @@ let shieldMesh = null;
 const remoteEntities = new Map();
 
 function createEntityFromData(data) {
-  const info = data.data || {};
-  let mobType = info.mobType || 'zombie';
-  // Дефолтные цвета и размеры для разных типов (если сервер не прислал)
-  const DEFAULTS = {
-    zombie: { color: 0x44aa44, width: 0.6, height: 1.8 },
-    skeleton: { color: 0xcccccc, width: 0.6, height: 1.8 },
-    ghost: { color: 0x88aaff, width: 0.6, height: 1.8 },
-    slime: { color: 0x88dd88, width: 0.6, height: 0.6 },
-  };
-  const def = DEFAULTS[mobType] || DEFAULTS.zombie;
-
-  const color = info.color ?? data.color ?? def.color;
-  const width = info.width ?? data.width ?? def.width;
-  const height = info.height ?? data.height ?? def.height;
+  // Если data.data существует и это объект, используем его, иначе используем data
+  const info = (data.data && typeof data.data === 'object' && !Array.isArray(data.data)) ? data.data : data;
+  
+  const mobType = info.mobType || 'zombie';
+  const color = info.color ?? 0x44aa44;
+  const width = info.width ?? 0.6;
+  const height = info.height ?? 0.6;
 
   console.log(`[Entity] ID: ${data.id}, type: ${mobType}, size: ${width}x${height}, color: ${color.toString(16)}`);
 

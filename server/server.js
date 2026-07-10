@@ -1257,7 +1257,7 @@ function handleSpawnMobCommand(senderId, args) {
   const x = player.x + 2;
   const z = player.z + 2;
   const y = getCachedHeight(Math.floor(x), Math.floor(z)) + 1;
-  let mobData = 'mob:zombie,health:10,max_health:10,walk_speed:1,damage:1,damage_distance:0.7,gravity:1,slimeSize:0';
+  let mobData = 'mob:zombie,health:10,max_health:10,walk_speed:1,damage:1,damage_distance:0.7,gravity:1,slimeSize:0,color:0xcccccc';
   if (args.length > 0) {
     // Исправление: склеиваем аргументы через запятую, а не пробел
     mobData = args.join(',');
@@ -1269,8 +1269,8 @@ function handleSpawnMobCommand(senderId, args) {
 // ========== Инициализация тестовых мобов ==========
 const testMobs = [
   { x: 5, z: 5, data: 'mob:zombie,health:10,walk_speed:1,damage:4,gravity:0.5,slimeSize:0' },
-  { x: -5, z: -5, data: 'mob:skeleton,health:8,walk_speed:1.5,damage:2,damage_distance:1,gravity:1,slimeSize:0' },
-  { x: 10, z: -5, data: 'mob:ghost,health:12,walk_speed:2,damage:3,damage_distance:1,gravity:0,slimeSize:0' },
+  { x: -5, z: -5, data: 'mob:skeleton,health:8,walk_speed:1.5,damage:2,damage_distance:1,gravity:1,slimeSize:0,color:0xcccccc' },
+  { x: 10, z: -5, data: 'mob:ghost,health:12,walk_speed:2,damage:3,damage_distance:1,gravity:0,slimeSize:0,color:0xcccccc' },
   { x: -8, z: 8, data: 'mob:slime,health:20,slimeSize:1.0,damage:2,walk_speed:1.5,gravity:1' },
   { x: -6, z: 10, data: 'mob:slime,health:15,slimeSize:0.8,damage:1.5,walk_speed:1.2,gravity:1' },
   { x: -2, z: 12, data: 'mob:zombie,health:10,slimeSize:1.2,damage:1,walk_speed:2,gravity:1' },
