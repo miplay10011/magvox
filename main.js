@@ -968,18 +968,17 @@ let shieldMesh = null;
 const remoteEntities = new Map();
 
 function createEntityFromData(data) {
-  // Цвет
-  const color = data.data?.color ?? data.color ?? 0x44aaff;
-  // Размеры (передаются сервером)
-  const width = data.data?.width ?? data.width ?? 0.6;
-  const height = data.data?.height ?? data.height ?? 0.6;
+  // Безопасное извлечение данных
+  const info = data.data || {};
+  const color = info.color ?? data.color ?? 0x44aaff;
+  const width = info.width ?? data.width ?? 0.6;
+  const height = info.height ?? data.height ?? 0.6;
   
   console.log(`[Entity] ID: ${data.id}, size: ${width}x${height}, color: ${color.toString(16)}`);
   
   const geo = new THREE.BoxGeometry(width, height, width);
   const mat = new THREE.MeshStandardMaterial({ color });
   const mesh = new THREE.Mesh(geo, mat);
-  // Центр меша – на половине высоты выше ног
   const centerY = data.y + height / 2;
   mesh.position.set(data.x, centerY, data.z);
   mesh.rotation.y = data.yaw || 0;
@@ -991,7 +990,7 @@ function createEntityFromData(data) {
     targetPos: new THREE.Vector3(data.x, centerY, data.z),
     targetYaw: data.yaw || 0,
     targetPitch: data.pitch || 0,
-    height: height, // запоминаем для обновления позиции
+    height: height, // сохраняем для обновления
   });
 }
 
@@ -1142,6 +1141,15 @@ net.on('disconnect', () => {
 });
 net.on('systemMessage', (msg) => {
   addChatMessage('Система', msg.message);
+});
+net.on('entityUpdate', (m) => {
+  const ent = remoteEntities.get(m.id);
+  if (!ent) return;
+  // Защита от отсутствия height
+  const h = ent.height || 0.6;
+  ent.targetPos.set(m.x, m.y + h / 2, m.z);
+  if (m.yaw !== undefined) ent.targetYaw = m.yaw;
+  if (m.pitch !== undefined) ent.targetPitch = m.pitch;
 });
 net.on('chat', (msg) => {
   const senderName = msg.senderId === myId ? 'You' : (msg.senderNick || `Player ${msg.senderId}`);

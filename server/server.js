@@ -695,7 +695,7 @@ function generateDungeon(editsMap, cx, cz, groundY) {
   }
 }
 
-// ==================== ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ БАМБУКА (ПЕРЕНЕСЕНА ВВЕРХ) ====================
+// ==================== ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ БАМБУКА ====================
 function generateBamboo(editsMap, cx, cz, groundY) {
   const h = 3 + Math.floor(Math.random() * 4);
   for (let y = 0; y < h; y++) {
@@ -775,7 +775,7 @@ const MOB_TYPES = {
     color: 0x44aa44,
     gravity: 1,
     jumpPower: 12.0,
-    slimeSize: 0,          // 0 – не сливается
+    slimeSize: 0,
   },
   skeleton: {
     health: 20,
@@ -817,7 +817,7 @@ const MOB_TYPES = {
     color: 0x88dd88,
     gravity: 1,
     jumpPower: 8.0,
-    slimeSize: 1.0,        // по умолчанию 1 – сливается
+    slimeSize: 1.0,
   },
 };
 
@@ -1046,9 +1046,16 @@ function mergeMobs(entity, dt) {
   const newDamage = Math.max(entity.damage, target.damage) + 0.5 * newSize;
   const newWalkSpeed = Math.min(3.0, (entity.walkSpeed + target.walkSpeed) / 2 + 0.2 * newSize);
 
-  const midX = (entity.x + target.x) / 2;
-  const midZ = (entity.z + target.z) / 2;
-  const midY = (entity.y + target.y) / 2;
+  // Позиция – средняя, но с коррекцией, чтобы не застрять в блоках
+  let midX = (entity.x + target.x) / 2;
+  let midZ = (entity.z + target.z) / 2;
+  let midY = (entity.y + target.y) / 2;
+
+  // Поднимаем, если внутри блока
+  const blockUnder = getBlockType(Math.floor(midX), Math.floor(midY - 0.1), Math.floor(midZ));
+  if (blockUnder !== AIR) {
+    midY += 1;
+  }
 
   const type1 = entity.mobType;
   const type2 = target.mobType;
@@ -1250,9 +1257,10 @@ function handleSpawnMobCommand(senderId, args) {
   const x = player.x + 2;
   const z = player.z + 2;
   const y = getCachedHeight(Math.floor(x), Math.floor(z)) + 1;
-  let mobData = 'mob:zombie,health:30,max_health:30,walk_speed:3,damage:3,damage_distance:2,gravity:1,slimeSize:0';
+  let mobData = 'mob:zombie,health:10,max_health:10,walk_speed:1,damage:1,damage_distance:0.7,gravity:1,slimeSize:0';
   if (args.length > 0) {
-    mobData = args.join(' ');
+    // Исправление: склеиваем аргументы через запятую, а не пробел
+    mobData = args.join(',');
   }
   const id = spawnMob(x, y, z, mobData);
   broadcast('systemMessage', { message: `Игрок ${player.nickname} призвал моба (id ${id})` });
@@ -1260,12 +1268,12 @@ function handleSpawnMobCommand(senderId, args) {
 
 // ========== Инициализация тестовых мобов ==========
 const testMobs = [
-  { x: 5, z: 5, data: 'mob:zombie,health:30,walk_speed:2.5,damage:4,gravity:1,slimeSize:0' },
-  { x: -5, z: -5, data: 'mob:skeleton,health:20,walk_speed:4,damage:5,damage_distance:6,gravity:1,slimeSize:0' },
-  { x: 10, z: -5, data: 'mob:ghost,health:15,walk_speed:3,damage:3,damage_distance:3,gravity:0,slimeSize:0' },
+  { x: 5, z: 5, data: 'mob:zombie,health:10,walk_speed:1,damage:4,gravity:0.5,slimeSize:0' },
+  { x: -5, z: -5, data: 'mob:skeleton,health:8,walk_speed:1.5,damage:2,damage_distance:1,gravity:1,slimeSize:0' },
+  { x: 10, z: -5, data: 'mob:ghost,health:12,walk_speed:2,damage:3,damage_distance:1,gravity:0,slimeSize:0' },
   { x: -8, z: 8, data: 'mob:slime,health:20,slimeSize:1.0,damage:2,walk_speed:1.5,gravity:1' },
   { x: -6, z: 10, data: 'mob:slime,health:15,slimeSize:0.8,damage:1.5,walk_speed:1.2,gravity:1' },
-  { x: -2, z: 12, data: 'mob:zombie,health:40,slimeSize:1.2,damage:6,walk_speed:2,gravity:1' },
+  { x: -2, z: 12, data: 'mob:zombie,health:10,slimeSize:1.2,damage:1,walk_speed:2,gravity:1' },
 ];
 for (const m of testMobs) {
   const y = getCachedHeight(Math.floor(m.x), Math.floor(m.z)) + 1;
@@ -1353,7 +1361,8 @@ function applyDamage(targetId, dmg, src = {}) {
     target.phoenixUsed = false;
     if (attackerId && attackerId !== targetId && attacker) {
       const msg = `${attacker.nickname} убил ${target.nickname} с помощью ${src.weapon || 'неизвестного оружия'}`;
-      broadcast('systemMessage', { message: msg }); console.log(msg);
+      broadcast('systemMessage', { message: msg });
+      console.log(msg);
     } else {
       broadcast('systemMessage', { message: `${target.nickname} погиб` });
     }
