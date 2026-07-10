@@ -1036,13 +1036,36 @@ const EVENTS = {
   if (m.pitch !== undefined) ent.targetPitch = m.pitch;
 },
   entityDespawn: (m) => {
-    const ent = remoteEntities.get(m.id);
-    if (!ent) return;
-    scene.remove(ent.mesh);
-    ent.mesh.geometry.dispose();
-    ent.mesh.material.dispose();
-    remoteEntities.delete(m.id);
-  },
+  const ent = remoteEntities.get(m.id);
+  if (!ent) return;
+  const mesh = ent.mesh;
+  // Если это группа (моб), удаляем все дочерние меши
+  if (mesh.isGroup) {
+    mesh.traverse((child) => {
+      if (child.isMesh) {
+        child.geometry.dispose();
+        if (Array.isArray(child.material)) {
+          child.material.forEach(mat => mat.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+    });
+    scene.remove(mesh);
+  } else {
+    // Обычный меш
+    scene.remove(mesh);
+    if (mesh.geometry) mesh.geometry.dispose();
+    if (mesh.material) {
+      if (Array.isArray(mesh.material)) {
+        mesh.material.forEach(mat => mat.dispose());
+      } else {
+        mesh.material.dispose();
+      }
+    }
+  }
+  remoteEntities.delete(m.id);
+},
   entityHp: (m) => {
     const ent = remoteEntities.get(m.id);
     if (ent) {
@@ -1072,19 +1095,26 @@ const remoteEntities = new Map();
 
 function createEntityFromData(data) {
   const info = data.data || {};
-  const mobType = info.mobType || 'zombie'; // тип моба
-  const color = info.color ?? data.color ?? 0x44aaff;
-  const width = info.width ?? data.width ?? 0.6;
-  const height = info.height ?? data.height ?? 0.6;
+  let mobType = info.mobType || 'zombie';
+  // Дефолтные цвета и размеры для разных типов (если сервер не прислал)
+  const DEFAULTS = {
+    zombie: { color: 0x44aa44, width: 0.6, height: 1.8 },
+    skeleton: { color: 0xcccccc, width: 0.6, height: 1.8 },
+    ghost: { color: 0x88aaff, width: 0.6, height: 1.8 },
+    slime: { color: 0x88dd88, width: 0.6, height: 0.6 },
+  };
+  const def = DEFAULTS[mobType] || DEFAULTS.zombie;
+
+  const color = info.color ?? data.color ?? def.color;
+  const width = info.width ?? data.width ?? def.width;
+  const height = info.height ?? data.height ?? def.height;
 
   console.log(`[Entity] ID: ${data.id}, type: ${mobType}, size: ${width}x${height}, color: ${color.toString(16)}`);
 
-  // Создаём модель в зависимости от типа
   let mesh;
   if (data.type === 'mob') {
     mesh = createMobModel(mobType, color, width, height);
   } else {
-    // Для других сущностей (test_cube) оставляем куб
     const geo = new THREE.BoxGeometry(width, height, width);
     const mat = new THREE.MeshStandardMaterial({ color });
     mesh = new THREE.Mesh(geo, mat);
@@ -1097,14 +1127,13 @@ function createEntityFromData(data) {
   scene.add(mesh);
 
   remoteEntities.set(data.id, {
-    mesh,                  // группа или меш
+    mesh,
     targetPos: new THREE.Vector3(data.x, centerY, data.z),
     targetYaw: data.yaw || 0,
     targetPitch: data.pitch || 0,
     height: height,
     mobType: mobType,
     color: color,
-    width: width,
     isMob: data.type === 'mob',
   });
 }
