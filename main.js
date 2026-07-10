@@ -598,7 +598,68 @@ function createPlayerModel(color) {
   group.userData = { leftArm, rightArm, leftLeg, rightLeg };
   return group;
 }
+function createMobModel(mobType, color, width, height) {
+  const group = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.2 });
+  // Сохраним материал для вспышки
+  group.userData.material = mat;
 
+  // Размеры будут заданы через масштабирование или геометрию
+  // Для простоты используем куб с разными пропорциями
+  let bodyGeo, headGeo;
+  switch (mobType) {
+    case 'zombie':
+      bodyGeo = new THREE.BoxGeometry(width * 0.8, height * 0.6, width * 0.6);
+      headGeo = new THREE.BoxGeometry(width * 0.6, height * 0.3, width * 0.6);
+      break;
+    case 'skeleton':
+      bodyGeo = new THREE.BoxGeometry(width * 0.7, height * 0.7, width * 0.5);
+      headGeo = new THREE.BoxGeometry(width * 0.5, height * 0.25, width * 0.5);
+      break;
+    case 'slime':
+      bodyGeo = new THREE.SphereGeometry(width * 0.5, 12, 12);
+      headGeo = null;
+      break;
+    case 'ghost':
+      bodyGeo = new THREE.SphereGeometry(width * 0.5, 12, 12);
+      headGeo = new THREE.SphereGeometry(width * 0.3, 8, 8);
+      break;
+    default:
+      bodyGeo = new THREE.BoxGeometry(width, height, width);
+      headGeo = null;
+  }
+
+  const body = new THREE.Mesh(bodyGeo, mat);
+  body.position.y = height * 0.5;
+  group.add(body);
+  group.userData.body = body;
+
+  if (headGeo) {
+    const headMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(color).offsetHSL(0, 0, 0.1) });
+    const head = new THREE.Mesh(headGeo, headMat);
+    head.position.y = height * 0.9;
+    group.add(head);
+    group.userData.head = head;
+  }
+
+  // Добавим глаза для выразительности (опционально)
+  if (mobType !== 'slime' && mobType !== 'ghost') {
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    const eyeGeo = new THREE.SphereGeometry(0.08, 6, 6);
+    const pupilGeo = new THREE.SphereGeometry(0.04, 6, 6);
+    for (let side of [-1, 1]) {
+      const eye = new THREE.Mesh(eyeGeo, eyeMat);
+      eye.position.set(side * 0.2, height * 0.9, width * 0.45);
+      group.add(eye);
+      const pupil = new THREE.Mesh(pupilGeo, pupilMat);
+      pupil.position.set(side * 0.22, height * 0.9, width * 0.48);
+      group.add(pupil);
+    }
+  }
+
+  return group;
+}
 function flashPlayerModel(group, duration = 200) {
   if (!group) return;
   group.children.forEach(child => {
@@ -628,6 +689,47 @@ function flashPlayerModel(group, duration = 200) {
       }
     });
     group._flashTimer = null;
+  }, duration);
+}
+function flashMobModel(ent, duration = 200) {
+  if (!ent || !ent.mesh) return;
+  const mesh = ent.mesh;
+  // Если это группа (моб), проходим по всем дочерним мешам
+  const children = mesh.children || [mesh];
+  const originalColors = [];
+  // Сохраняем оригинальные цвета, если ещё не сохранили
+  if (!mesh.userData._flashColors) {
+    mesh.userData._flashColors = [];
+    children.forEach(child => {
+      if (child.isMesh && child.material) {
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        const colors = mats.map(m => m.color.clone());
+        mesh.userData._flashColors.push({ child, colors });
+      }
+    });
+  }
+  // Устанавливаем красный
+  children.forEach(child => {
+    if (child.isMesh && child.material) {
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      mats.forEach(m => m.color.setHex(0xff0000));
+    }
+  });
+  // Возврат через duration
+  if (mesh.userData._flashTimer) clearTimeout(mesh.userData._flashTimer);
+  mesh.userData._flashTimer = setTimeout(() => {
+    const flashData = mesh.userData._flashColors;
+    if (flashData) {
+      flashData.forEach(({ child, colors }) => {
+        if (child.isMesh && child.material) {
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          mats.forEach((m, i) => {
+            if (colors[i]) m.color.copy(colors[i]);
+          });
+        }
+      });
+    }
+    mesh.userData._flashTimer = null;
   }, duration);
 }
 
@@ -942,13 +1044,14 @@ const EVENTS = {
     remoteEntities.delete(m.id);
   },
   entityHp: (m) => {
-    // Визуальное отображение здоровья моба (можно расширить)
     const ent = remoteEntities.get(m.id);
     if (ent) {
-      // Просто лог в консоль, можно добавить индикатор над мобом
-      console.log(`Моб ${m.id} HP: ${m.hp}/${m.maxHp}`);
+      flashMobModel(ent, 300); // мигаем красным
+      // Можно добавить частицы
+      const pos = ent.mesh.position;
+      spawnParticles(pos.x, pos.y + 0.5, pos.z, 0xff3333, 15, 1.5, 0.8);
     }
-  },
+  },  
 };
 for (const [t, f] of Object.entries(EVENTS)) net.on(t, f);
 
@@ -968,29 +1071,41 @@ let shieldMesh = null;
 const remoteEntities = new Map();
 
 function createEntityFromData(data) {
-  // Безопасное извлечение данных
   const info = data.data || {};
+  const mobType = info.mobType || 'zombie'; // тип моба
   const color = info.color ?? data.color ?? 0x44aaff;
   const width = info.width ?? data.width ?? 0.6;
   const height = info.height ?? data.height ?? 0.6;
-  
-  console.log(`[Entity] ID: ${data.id}, size: ${width}x${height}, color: ${color.toString(16)}`);
-  
-  const geo = new THREE.BoxGeometry(width, height, width);
-  const mat = new THREE.MeshStandardMaterial({ color });
-  const mesh = new THREE.Mesh(geo, mat);
+
+  console.log(`[Entity] ID: ${data.id}, type: ${mobType}, size: ${width}x${height}, color: ${color.toString(16)}`);
+
+  // Создаём модель в зависимости от типа
+  let mesh;
+  if (data.type === 'mob') {
+    mesh = createMobModel(mobType, color, width, height);
+  } else {
+    // Для других сущностей (test_cube) оставляем куб
+    const geo = new THREE.BoxGeometry(width, height, width);
+    const mat = new THREE.MeshStandardMaterial({ color });
+    mesh = new THREE.Mesh(geo, mat);
+  }
+
   const centerY = data.y + height / 2;
   mesh.position.set(data.x, centerY, data.z);
   mesh.rotation.y = data.yaw || 0;
   mesh.rotation.x = data.pitch || 0;
   scene.add(mesh);
-  
+
   remoteEntities.set(data.id, {
-    mesh,
+    mesh,                  // группа или меш
     targetPos: new THREE.Vector3(data.x, centerY, data.z),
     targetYaw: data.yaw || 0,
     targetPitch: data.pitch || 0,
-    height: height, // сохраняем для обновления
+    height: height,
+    mobType: mobType,
+    color: color,
+    width: width,
+    isMob: data.type === 'mob',
   });
 }
 
